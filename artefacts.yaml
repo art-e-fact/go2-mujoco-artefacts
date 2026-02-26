@@ -17,3 +17,4 @@ jobs:
       settings:
         - name: "test movement"
           pytest_file: tests/test_demo.py
+          output_dirs: ["output"]

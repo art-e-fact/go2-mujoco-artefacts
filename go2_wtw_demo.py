@@ -302,6 +302,7 @@ def main():
     import argparse
     parser = argparse.ArgumentParser(description="Go2 Walk-These-Ways Demo")
     parser.add_argument("--cycles", type=int, default=0, help="Exit after N cycles (0 = run forever)")
+    parser.add_argument("--record", type=str, default=None, help="Record video to this file path (e.g. output/demo.mp4)")
     args = parser.parse_args()
     
     # Paths
@@ -329,20 +330,35 @@ def main():
     target_pos = np.zeros(12, dtype=np.float32)
     step_count = 0
     
+    # Video recording setup
+    renderer = None
+    record_cam = None
+    frames = []
+    if args.record:
+        model.vis.global_.offwidth = 1280
+        model.vis.global_.offheight = 720
+        renderer = mujoco.Renderer(model, width=1280, height=720)
+        # Camera that tracks the robot
+        record_cam = mujoco.MjvCamera()
+        record_cam.type = mujoco.mjtCamera.mjCAMERA_TRACKING
+        record_cam.trackbodyid = model.body('base_link').id
+        record_cam.distance = 3.0
+        record_cam.elevation = -30.0
+        record_cam.azimuth = 135.0
+        print(f"Recording video to: {args.record}")
+
     print("\n=== Walk-These-Ways Go2 Square Demo ===")
     print("Simple sequence: Forward -> Turn -> Forward -> Turn (repeat)")
     print("==========================================\n")
     
     with mujoco.viewer.launch_passive(model, data) as viewer:
-        sim_start = time.time()
-        
         while viewer.is_running():
             step_start = time.time()
             
-            # Simple square path commands
-            t = time.time() - sim_start
-            cycle_num = int(t // 18.0)
-            cycle_time = t % 18.0  # 18 second cycle (removed stand pauses)
+            # Use sim time for consistent cycle timing
+            sim_time = step_count * model.opt.timestep
+            cycle_num = int(sim_time // 18.0)
+            cycle_time = sim_time % 18.0  # 18 second cycle
             
             # Exit after max_cycles if specified
             if max_cycles > 0 and cycle_num >= max_cycles:
@@ -376,7 +392,12 @@ def main():
             # Physics step
             mujoco.mj_step(model, data)
             step_count += 1
-            
+
+            # Capture frame for video (at 50 fps)
+            if renderer and step_count % control_decimation == 0:
+                renderer.update_scene(data, record_cam)
+                frames.append(renderer.render().copy())
+
             # Sync viewer
             viewer.sync()
             
@@ -385,6 +406,13 @@ def main():
             sleep_time = model.opt.timestep - elapsed_sim
             if sleep_time > 0:
                 time.sleep(sleep_time)
+
+    # Save video after sim loop ends
+    if renderer and frames:
+        import mediapy as media
+        media.write_video(args.record, frames, fps=50)
+        print(f"Saved video: {args.record} ({len(frames)} frames)")
+        renderer.close()
 
 
 if __name__ == "__main__":

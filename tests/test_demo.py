@@ -1,7 +1,8 @@
 """
 Integration test for Go2 MuJoCo demo.
 
-Runs go2_wtw_demo.py for one cycle and verifies it exits cleanly.
+Runs go2_wtw_demo.py for one cycle with GUI and video recording.
+The video is saved for upload to artefacts.
 
 Run with: pytest tests/ -v
 """
@@ -25,10 +26,15 @@ def get_python_executable():
 
 
 def test_demo_runs_one_cycle():
-    """Run go2_wtw_demo.py for one cycle and check it exits cleanly."""
+    """Run go2_wtw_demo.py for one cycle with video recording."""
+    project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    output_dir = os.path.join(project_dir, "output")
+    os.makedirs(output_dir, exist_ok=True)
+    video_path = os.path.join(output_dir, "demo_recording.mp4")
+
     result = subprocess.run(
-        [get_python_executable(), "go2_wtw_demo.py", "--cycles", "1"],
-        cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        [get_python_executable(), "go2_wtw_demo.py", "--cycles", "1", "--record", video_path],
+        cwd=project_dir,
         capture_output=True,
         text=True,
         timeout=60  # 18 seconds per cycle + buffer
@@ -39,3 +45,5 @@ def test_demo_runs_one_cycle():
     
     assert result.returncode == 0, f"Demo failed with code {result.returncode}: {result.stderr}"
     assert "Completed 1 cycle" in result.stdout, "Demo should complete one cycle"
+    assert os.path.exists(video_path), "Video file should be created"
+    assert os.path.getsize(video_path) > 0, "Video file should not be empty"
