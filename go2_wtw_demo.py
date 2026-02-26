@@ -25,9 +25,10 @@ class CPUUnpickler(pickle.Unpickler):
 
 
 # Maps WTW joint indices to MuJoCo ctrl indices (different ordering)
+# 4 Legs with 3 joints each: Hip, Thigh, Calf
 WTW_TO_MUJOCO_CTRL = [3, 4, 5, 0, 1, 2, 9, 10, 11, 6, 7, 8]
 
-# Default joint angles in WTW order
+# Default joint angles in WTW order i.e standing pose
 DEFAULT_JOINT_ANGLES_WTW = np.array([
     0.1, 0.8, -1.5,   # FL
     -0.1, 0.8, -1.5,  # FR
