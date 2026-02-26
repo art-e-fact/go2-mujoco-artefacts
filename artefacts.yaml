@@ -1,0 +1,19 @@
+project: artefacts/go2-mujoco
+version: 0.1.0
+
+jobs:
+  basic_test:
+    type: test
+    timeout: 20 # minutes
+    package:
+      docker:
+        build:
+          dockerfile: Dockerfile
+    runtime:
+      framework: other
+      simulator: mujoco
+      
+    scenarios:
+      settings:
+        - name: "test movement"
+          pytest_file: tests/test_demo.py
