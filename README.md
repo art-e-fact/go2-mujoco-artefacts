@@ -1,6 +1,11 @@
-# Go2 MuJoCo Walk Demo
+# Go2 MuJoCo Walk Demo (Artefacts)
 
 Unitree Go2 walking demo using MuJoCo and the Walk-These-Ways pretrained policy.
+The demo runs on ubuntu, but also MacOS natively without vms or containerization.
+
+A flat scene is added to the `unitree_mujoco` package (see copy stage) to provide a simple demo for the [Go2](https://www.unitree.com/go2) to move.
+
+With thanks to [Teddy Liao](https://github.com/Teddy-Liao) for the pretrained policy in the [walk-these-ways-go2](https://github.com/Teddy-Liao/walk-these-ways-go2) repository.
 
 ## Setup
 
