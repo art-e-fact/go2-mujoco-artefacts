@@ -15,7 +15,7 @@ import mujoco.viewer
 import pickle
 import io
 
-
+# In order to run on non-Cuda machines
 class CPUUnpickler(pickle.Unpickler):
     """Unpickler that maps CUDA tensors to CPU"""
     def find_class(self, module, name):
@@ -24,31 +24,10 @@ class CPUUnpickler(pickle.Unpickler):
         return super().find_class(module, name)
 
 
-# Joint configuration
-# Walk-these-ways uses FL, FR, RL, RR order
-JOINT_NAMES_WTW = [
-    "FL_hip_joint", "FL_thigh_joint", "FL_calf_joint",
-    "FR_hip_joint", "FR_thigh_joint", "FR_calf_joint",
-    "RL_hip_joint", "RL_thigh_joint", "RL_calf_joint",
-    "RR_hip_joint", "RR_thigh_joint", "RR_calf_joint",
-]
-
-# MuJoCo qpos order: FL, FR, RL, RR (same as WTW!)
-# MuJoCo ctrl order: FR, FL, RR, RL (different!)
-
-# WTW joint order: FL(0,1,2), FR(3,4,5), RL(6,7,8), RR(9,10,11)
-# MuJoCo qpos order: FL(0,1,2), FR(3,4,5), RL(6,7,8), RR(9,10,11) - SAME!
-# MuJoCo ctrl order: FR(0,1,2), FL(3,4,5), RR(6,7,8), RL(9,10,11)
-
-# No mapping needed for qpos (already same order)
-# For ctrl: WTW index -> MuJoCo ctrl index
-# FL(0,1,2) -> ctrl(3,4,5)
-# FR(3,4,5) -> ctrl(0,1,2)
-# RL(6,7,8) -> ctrl(9,10,11)
-# RR(9,10,11) -> ctrl(6,7,8)
+# Maps WTW joint indices to MuJoCo ctrl indices (different ordering)
 WTW_TO_MUJOCO_CTRL = [3, 4, 5, 0, 1, 2, 9, 10, 11, 6, 7, 8]
 
-# Default joint angles (WTW order)
+# Default joint angles in WTW order
 DEFAULT_JOINT_ANGLES_WTW = np.array([
     0.1, 0.8, -1.5,   # FL
     -0.1, 0.8, -1.5,  # FR
@@ -234,13 +213,13 @@ class WalkTheseWaysController:
         obs[idx:idx+self.num_commands] = scaled_commands
         idx += self.num_commands
         
-        # 3. Joint positions relative to default (12) - qpos is already in WTW order!
+        # 3. Joint positions relative to default (12)
         joint_pos = data.qpos[7:19]
         dof_pos_rel = (joint_pos - DEFAULT_JOINT_ANGLES_WTW) * self.obs_scales['dof_pos']
         obs[idx:idx+12] = dof_pos_rel
         idx += 12
         
-        # 4. Joint velocities (12) - qvel is already in WTW order!
+        # 4. Joint velocities (12)
         joint_vel = data.qvel[6:18]
         dof_vel = joint_vel * self.obs_scales['dof_vel']
         obs[idx:idx+12] = dof_vel
@@ -308,7 +287,6 @@ class WalkTheseWaysController:
         gait_freq = commands[4]
         self.gait_index = (self.gait_index + self.dt * gait_freq) % 1.0
         
-        # Return in WTW order (same as qpos order)
         return target_pos_wtw
     
     def reset(self):
