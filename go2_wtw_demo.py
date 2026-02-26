@@ -349,27 +349,19 @@ def main():
                 print(f"\nCompleted {max_cycles} cycle(s). Exiting.")
                 break
             
-            # Build commands
-            commands = controller.get_commands()
-            
+            # Build commands for square path
             if cycle_time < 1.0:
-                # Stand still at start
-                pass
+                commands = controller.get_commands()  # Stand still
             elif cycle_time < 5.0:
-                # Walk forward
-                commands[0] = 0.5  # vx
+                commands = controller.get_commands(vx=0.5)  # Walk forward
             elif cycle_time < 9.0:
-                # Walk forward while turning left
-                commands[0] = 0.2
-                commands[2] = 1.5  # vyaw - reduced turn rate
+                commands = controller.get_commands(vx=0.2, vyaw=1.5)  # Forward + turn left
             elif cycle_time < 13.0:
-                # Walk forward again (no pause)
-                commands[0] = 0.5
+                commands = controller.get_commands(vx=0.5)  # Walk forward
             elif cycle_time < 17.0:
-                # Walk forward while turning left
-                commands[0] = 0.2
-                commands[2] = 1.5
-            # else: brief pause before cycle repeats
+                commands = controller.get_commands(vx=0.2, vyaw=1.5)  # Forward + turn left
+            else:
+                commands = controller.get_commands()  # Brief pause before cycle repeats
             
             # Policy step (at control frequency)
             if step_count % control_decimation == 0:
