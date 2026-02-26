@@ -31,3 +31,9 @@ source venv/bin/activate # if not already
 mjpython go2_wtw_demo.py
 ```
 The robot will walk forward and turn left in a loop.
+
+### Run test with artefacts
+
+```
+artefacts run basic_test
+```
