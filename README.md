@@ -39,6 +39,14 @@ The robot will walk forward and turn left in a loop.
 
 ### Run test with artefacts
 
+1. Create a project at app.artefacts.com
+2. Rename `project:` in the `artefacts.yaml` file to your `<org_name>/<project_name>
+3. Run `artefacts config add <org_name>/<project_name>` , create the ApiKey, and paste into the terminal
+4. Select `N` when you are prompted to whether you would like a new `artefacts.yaml` file
+
+You will be able to run the test with the following command
 ```
 artefacts run basic_test
 ```
+
+Once the test has finished, test result (and a video) will be uploaded to your project page on the artefacts dashboard
