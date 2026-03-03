@@ -32,8 +32,10 @@ def test_demo_runs_one_cycle():
     os.makedirs(output_dir, exist_ok=True)
     video_path = os.path.join(output_dir, "demo_recording.mp4")
 
+    cmd = [get_python_executable(), "go2_wtw_demo.py", "--cycles", "1", "--headless", "--record", video_path]
+
     result = subprocess.run(
-        [get_python_executable(), "go2_wtw_demo.py", "--cycles", "1", "--record", video_path],
+        cmd,
         cwd=project_dir,
         capture_output=True,
         text=True,

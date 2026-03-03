@@ -10,7 +10,7 @@ jobs:
         build:
           dockerfile: Dockerfile
     runtime:
-      framework: other
+      framework: null
       simulator: mujoco
       
     scenarios:
