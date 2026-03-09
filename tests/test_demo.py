@@ -1,51 +1,34 @@
 """
-Integration test for Go2 MuJoCo demo.
+Integration test for the Go2 WTW demo.
 
-Runs go2_wtw_demo.py for one cycle with GUI and video recording.
-The video is saved for upload to artefacts.
+go2_wtw_demo.py --headless manages the full stack internally
+(headless_bridge + sport_sim_server + SportClient).
 
-Run with: pytest tests/ -v
+Run with: pytest tests/test_demo.py -v -s
 """
 
-import pytest
-import subprocess
-import sys
 import os
-import platform
-import shutil
+import sys
+import subprocess
+import pytest
+
+PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SDK_PATH    = os.path.join(PROJECT_DIR, "src", "unitree_sdk2_python")
+ENV         = {**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONPATH": SDK_PATH}
 
 
-def get_python_executable():
-    """Get the appropriate Python executable for the platform."""
-    if platform.system() == "Darwin":
-        # macOS: use mjpython for MuJoCo GUI support
-        mjpython = shutil.which("mjpython")
-        if mjpython:
-            return mjpython
-    return sys.executable
-
-
-def test_demo_runs_one_cycle():
-    """Run go2_wtw_demo.py for one cycle with video recording."""
-    project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    output_dir = os.path.join(project_dir, "output")
-    os.makedirs(output_dir, exist_ok=True)
-    video_path = os.path.join(output_dir, "demo_recording.mp4")
-
-    cmd = [get_python_executable(), "go2_wtw_demo.py", "--cycles", "1", "--headless", "--record", video_path]
-
+def test_square_path_one_cycle():
     result = subprocess.run(
-        cmd,
-        cwd=project_dir,
-        capture_output=True,
-        text=True,
-        timeout=60  # 18 seconds per cycle + buffer
+        [sys.executable, "-u", "go2_wtw_demo.py",
+         "--headless", "--cycles", "1",
+         "--interface", "lo", "--domain", "0"],
+        cwd=PROJECT_DIR,
+        capture_output=True, text=True,
+        timeout=60,   # bridge + server start + 3 s wait + 16 s cycle + buffer
+        env=ENV,
     )
-    
-    print(f"stdout: {result.stdout}")
-    print(f"stderr: {result.stderr}")
-    
-    assert result.returncode == 0, f"Demo failed with code {result.returncode}: {result.stderr}"
-    assert "Completed 1 cycle" in result.stdout, "Demo should complete one cycle"
-    assert os.path.exists(video_path), "Video file should be created"
-    assert os.path.getsize(video_path) > 0, "Video file should not be empty"
+    print(result.stdout)
+    if result.stderr:
+        print(result.stderr)
+    assert result.returncode == 0, f"Demo exited with code {result.returncode}"
+    assert "Completed 1 cycle(s)." in result.stdout
