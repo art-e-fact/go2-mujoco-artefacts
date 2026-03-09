@@ -1,19 +1,33 @@
 #!/usr/bin/env python3
 """
-Go2 Walk-These-Ways Demo for MuJoCo
+Go2 Walk-These-Ways Demo
 
-Uses the pretrained gait-conditioned policy from walk-these-ways-go2.
-Observation: 70 dims per timestep, 30-step history (2100 total)
-Architecture: adaptation_module(2100) -> latent(2), body(2102) -> action(12)
+Drives the Go2 along a square path using the high-level SportClient API.
+Starts the full sim stack automatically.
+
+Usage:
+  python go2_wtw_demo.py              # MuJoCo viewer (UI)
+  python go2_wtw_demo.py --headless   # no display (CI / testing)
+
+WalkTheseWaysController is also defined here and imported by sport_sim_server.
 """
 
+import sys
+import os
 import time
+import threading
+import subprocess
 import numpy as np
 import torch
 import mujoco
-import mujoco.viewer
 import pickle
 import io
+
+_HERE    = os.path.dirname(os.path.abspath(__file__))
+_SIM_DIR = os.path.join(_HERE, "src", "unitree_mujoco", "simulate_python")
+_SDK_DIR = os.path.join(_HERE, "src", "unitree_sdk2_python")
+
+sys.path.insert(0, _SDK_DIR)
 
 # In order to run on non-Cuda machines
 class CPUUnpickler(pickle.Unpickler):
@@ -298,126 +312,115 @@ class WalkTheseWaysController:
         self.gait_index = 0.0
 
 
+def _drain(proc, events):
+    """Print subprocess stdout; set events[i] when events[i][0] marker appears.
+
+    events: list of (marker_str_or_None, threading.Event)
+    """
+    for line in proc.stdout:
+        print(f"  [sim] {line.rstrip()}")
+        for marker, event in events:
+            if marker and marker in line:
+                event.set()
+
+
+def _stop(procs):
+    for proc in reversed(procs):
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+
+
 def main():
     import argparse
+    from unitree_sdk2py.core.channel import ChannelFactoryInitialize
+    from unitree_sdk2py.go2.sport.sport_client import SportClient
+
     parser = argparse.ArgumentParser(description="Go2 Walk-These-Ways Demo")
-    parser.add_argument("--cycles", type=int, default=0, help="Exit after N cycles (0 = run forever)")
-    parser.add_argument("--record", type=str, default=None, help="Record video to this file path (e.g. output/demo.mp4)")
-    parser.add_argument("--headless", action="store_true", help="Run without viewer (no display required)")
+    parser.add_argument("--cycles",    type=int,   default=1,   help="Number of square-path cycles")
+    parser.add_argument("--interface", default="lo",             help="Network interface")
+    parser.add_argument("--domain",    type=int,   default=0,   help="DDS domain ID")
+    parser.add_argument("--headless",  action="store_true",      help="No viewer (use for testing/CI)")
     args = parser.parse_args()
-    
-    # Paths
-    model_dir = "src/walk-these-ways-go2/runs/gait-conditioned-agility/pretrain-go2/train/142238.667503/checkpoints"
-    cfg_path = "src/walk-these-ways-go2/runs/gait-conditioned-agility/pretrain-go2/train/142238.667503/parameters_cpu.pkl"
-    xml_path = "src/unitree_mujoco/unitree_robots/go2/scene_flat.xml"  # Flat ground scene (copied from resources/)
-    max_cycles = args.cycles
-    
-    # Load MuJoCo model
-    model = mujoco.MjModel.from_xml_path(xml_path)
-    data = mujoco.MjData(model)
-    
-    # Simulation params
-    model.opt.timestep = 0.005  # 200 Hz physics
-    control_decimation = 4  # 50 Hz control
-    
-    # Initialize controller
-    controller = WalkTheseWaysController(model_dir, cfg_path)
-    
-    # PD gains (from walk-these-ways config)
-    kp = np.full(12, controller.stiffness, dtype=np.float32)
-    kd = np.full(12, controller.damping, dtype=np.float32)
-    
-    # State
-    target_pos = np.zeros(12, dtype=np.float32)
-    step_count = 0
-    
-    # Video recording setup
-    renderer = None
-    record_cam = None
-    frames = []
-    if args.record:
-        model.vis.global_.offwidth = 1280
-        model.vis.global_.offheight = 720
-        renderer = mujoco.Renderer(model, width=1280, height=720)
-        # Camera that tracks the robot
-        record_cam = mujoco.MjvCamera()
-        record_cam.type = mujoco.mjtCamera.mjCAMERA_TRACKING
-        record_cam.trackbodyid = model.body('base_link').id
-        record_cam.distance = 3.0
-        record_cam.elevation = -30.0
-        record_cam.azimuth = 135.0
-        print(f"Recording video to: {args.record}")
 
-    print("\n=== Walk-These-Ways Go2 Square Demo ===")
-    print("Simple sequence: Forward -> Turn -> Forward -> Turn (repeat)")
-    print("==========================================\n")
-    
-    def sim_step():
-        nonlocal step_count, target_pos
-        sim_time = step_count * model.opt.timestep
-        cycle_num = int(sim_time // 18.0)
-        cycle_time = sim_time % 18.0  # 18 second cycle
+    env = {**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONPATH": _SDK_DIR}
+    procs = []
 
-        if max_cycles > 0 and cycle_num >= max_cycles:
-            print(f"\nCompleted {max_cycles} cycle(s). Exiting.")
-            return False
+    try:
+        # --- Sport server first (WTW model load takes ~5-10 s) ---
+        # Starting it before the bridge means the policy is fully loaded and
+        # ready to receive the first rt/lowstate, so the robot never goes limp.
+        server_proc  = subprocess.Popen(
+            [sys.executable, "-u", os.path.join(_SIM_DIR, "sport_sim_server.py"),
+             "--interface", args.interface, "--domain", str(args.domain)],
+            cwd=_HERE,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, env=env,
+        )
+        server_ready    = threading.Event()
+        server_standing = threading.Event()
+        threading.Thread(target=_drain, args=(server_proc,
+                                              [("Serving sport RPC", server_ready),
+                                               ("Standing complete.", server_standing)]),
+                         daemon=True).start()
+        procs.append(server_proc)
+        assert server_ready.wait(timeout=60), "sport_sim_server did not load in time"
 
-        # Build commands for square path
-        if cycle_time < 1.0:
-            commands = controller.get_commands()  # Stand still
-        elif cycle_time < 5.0:
-            commands = controller.get_commands(vx=0.5)  # Walk forward
-        elif cycle_time < 9.0:
-            commands = controller.get_commands(vx=0.2, vyaw=1.5)  # Forward + turn left
-        elif cycle_time < 13.0:
-            commands = controller.get_commands(vx=0.5)  # Walk forward
-        elif cycle_time < 17.0:
-            commands = controller.get_commands(vx=0.2, vyaw=1.5)  # Forward + turn left
+        # --- Bridge (viewer or headless) — started only after WTW is loaded ---
+        if args.headless:
+            bridge_cmd = [sys.executable, "-u",
+                          os.path.join(_HERE, "headless_bridge.py"),
+                          "--interface", args.interface, "--domain", str(args.domain)]
+            bridge_cwd    = _HERE
+            bridge_marker = "Running"
         else:
-            commands = controller.get_commands()  # Brief pause before cycle repeats
+            bridge_cmd = [sys.executable, "-u",
+                          os.path.join(_SIM_DIR, "unitree_mujoco.py")]
+            bridge_cwd    = _SIM_DIR   # config.ROBOT_SCENE is relative to this dir
+            bridge_marker = None
 
-        # Policy step (at control frequency)
-        if step_count % control_decimation == 0:
-            target_pos = controller.step(data, commands)
+        bridge_proc  = subprocess.Popen(bridge_cmd, cwd=bridge_cwd,
+                                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                        text=True, env=env)
+        bridge_ready = threading.Event()
+        threading.Thread(target=_drain, args=(bridge_proc, [(bridge_marker, bridge_ready)]),
+                         daemon=True).start()
+        procs.append(bridge_proc)
 
-        # PD control
-        current_pos = data.qpos[7:19]
-        current_vel = data.qvel[6:18]
-        torques_wtw = kp * (target_pos - current_pos) - kd * current_vel
-        data.ctrl[:] = torques_wtw[WTW_TO_MUJOCO_CTRL]
+        if args.headless:
+            assert bridge_ready.wait(timeout=15), "headless_bridge did not start in time"
+        else:
+            time.sleep(2.0)   # give the viewer time to open and initialise DDS
 
-        # Physics step
-        mujoco.mj_step(model, data)
-        step_count += 1
+        # Wait for sport server to see the bridge and reach standing.
+        assert server_standing.wait(timeout=20), "sport_sim_server did not reach standing pose"
+        time.sleep(1.5)  # WTW pre-warming accumulates during STANDING state
 
-        # Capture frame for video (at 50 fps)
-        if renderer and step_count % control_decimation == 0:
-            renderer.update_scene(data, record_cam)
-            frames.append(renderer.render().copy())
+        # --- SportClient ---
+        ChannelFactoryInitialize(args.domain, args.interface)
+        client = SportClient()
+        client.SetTimeout(10.0)
+        client.Init()
 
-        return True
+        print(f"\n=== Walk-These-Ways Go2 Square Demo ({args.cycles} cycle(s)) ===")
+        print("Sequence per cycle: forward 4 s → turn 4 s → forward 4 s → turn 4 s")
+        print("=================================================================\n")
 
-    if args.headless:
-        while sim_step():
-            pass
-    else:
-        with mujoco.viewer.launch_passive(model, data) as viewer:
-            while viewer.is_running():
-                step_start = time.time()
-                if not sim_step():
-                    break
-                viewer.sync()
-                elapsed_sim = time.time() - step_start
-                sleep_time = model.opt.timestep - elapsed_sim
-                if sleep_time > 0:
-                    time.sleep(sleep_time)
+        for cycle in range(args.cycles):
+            print(f"Cycle {cycle + 1}/{args.cycles}")
+            client.Move(0.5, 0.0, 0.0);  time.sleep(4.0)   # forward
+            client.Move(0.2, 0.0, 1.5);  time.sleep(4.0)   # forward + turn left
+            client.Move(0.5, 0.0, 0.0);  time.sleep(4.0)   # forward
+            client.Move(0.2, 0.0, 1.5);  time.sleep(4.0)   # forward + turn left
 
-    # Save video after sim loop ends
-    if renderer and frames:
-        import mediapy as media
-        media.write_video(args.record, frames, fps=50)
-        print(f"Saved video: {args.record} ({len(frames)} frames)")
-        renderer.close()
+        client.StopMove()
+        print(f"\nCompleted {args.cycles} cycle(s).")
+
+    finally:
+        _stop(procs)
 
 
 if __name__ == "__main__":
