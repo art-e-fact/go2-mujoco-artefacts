@@ -13,16 +13,11 @@ bash scripts/fetch_wtw_checkpoints.sh
 
 ### 2 — unitree_mujoco config
 
-**`src/unitree_mujoco/simulate_python/config.py`** — disable joystick (otherwise the sim thread exits if no gamepad is connected):
-```python
-USE_JOYSTICK = 0
-```
+No manual edits to `config.py` are required. `sport_mujoco.py` accepts `--domain` and `--scene` arguments to override the defaults at runtime:
 
-**`src/unitree_mujoco/simulate_python/unitree_mujoco.py`** — reset to standing keyframe on startup. Add after `mj_data = mujoco.MjData(mj_model)`:
-```python
-mujoco.mj_resetDataKeyframe(mj_model, mj_data, 0)  # start from "home" pose
+```bash
+python sport_mujoco.py --domain 0 --scene ../unitree_robots/go2/scene_flat.xml
 ```
-(Not needed for `sport_mujoco.py` — it handles this itself.)
 
 ---
 

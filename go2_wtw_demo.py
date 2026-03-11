@@ -56,6 +56,8 @@ def main():
     parser.add_argument("--interface", default="lo",             help="Network interface")
     parser.add_argument("--domain",    type=int,   default=0,   help="DDS domain ID")
     parser.add_argument("--headless",  action="store_true",      help="No viewer (use for testing/CI)")
+    parser.add_argument("--scene",         metavar="PATH", default=None,
+                        help="MuJoCo scene XML (passed to sport_mujoco.py; defaults to config.ROBOT_SCENE)")
     parser.add_argument("--record",       metavar="PATH", default=None,
                         help="Save spectator-view recording (passed to sport_mujoco.py)")
     parser.add_argument("--record-front", metavar="PATH", default=None,
@@ -74,6 +76,8 @@ def main():
                    "--interface", args.interface, "--domain", str(args.domain)]
         if args.headless:
             sim_cmd.append("--headless")
+        if args.scene:
+            sim_cmd += ["--scene", os.path.abspath(args.scene)]
         if args.record:
             sim_cmd += ["--record", os.path.abspath(args.record)]
 
