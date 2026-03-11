@@ -1,23 +1,9 @@
-FROM python:3.12-slim
-
-# System deps for MuJoCo rendering (EGL/offscreen) and video encoding
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgl1 \
-    libglfw3 \
-    libgles2 \
-    libegl1 \
-    libglib2.0-0 \
-    ffmpeg \
-    git \
-    && rm -rf /var/lib/apt/lists/*
+FROM public.ecr.aws/artefacts/go2:mujoco
 
 WORKDIR /ws
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . /ws
-
-# MuJoCo needs a display context for passive viewer; use EGL for offscreen
-ENV MUJOCO_GL=egl
+COPY artefacts.yaml go2_wtw_demo.py ./
+COPY tests/ tests/ 
+COPY resources/scene_flat.xml src/unitree_mujoco/unitree_robots/go2/
 
 CMD artefacts run $ARTEFACTS_JOB_NAME
