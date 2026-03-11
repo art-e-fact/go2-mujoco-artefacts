@@ -9,6 +9,8 @@ Run with: pytest tests/test_demo.py -v -s
 
 import os
 import sys
+import platform
+import shutil
 import subprocess
 import pytest
 
@@ -18,13 +20,22 @@ OUTPUT_DIR  = os.environ.get("ARTEFACTS_SCENARIO_UPLOAD_DIR", os.path.join(PROJE
 ENV         = {**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONPATH": SDK_PATH}
 
 
+def get_python_executable():
+    """Get the appropriate Python executable for the platform."""
+    if platform.system() == "Darwin":
+        mjpython = shutil.which("mjpython")
+        if mjpython:
+            return mjpython
+    return sys.executable
+
+
 def test_square_path_one_cycle():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     spectator_mp4 = os.path.join(OUTPUT_DIR, "run.mp4")
     front_mp4     = os.path.join(OUTPUT_DIR, "front.mp4")
 
     result = subprocess.run(
-        [sys.executable, "-u", "go2_wtw_demo.py",
+        [get_python_executable(), "-u", "go2_wtw_demo.py",
          "--headless", "--cycles", "1",
          "--record",       spectator_mp4,
          "--record-front", front_mp4,
