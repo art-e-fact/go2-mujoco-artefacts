@@ -4,16 +4,8 @@
 
 ### 1 — WTW policy checkpoints
 
-Place the three checkpoint files from the Walk-These-Ways pretrained Go2 policy into:
+Place the three checkpoint files from the Walk-These-Ways pretrained Go2 policy into `src/unitree_mujoco/simulate_python/wtw/` with:
 
-```
-src/unitree_mujoco/simulate_python/wtw/
-  body_latest.jit
-  adaptation_module_latest.jit
-  parameters_cpu.pkl
-```
-
-Using sparse-checkout to avoid downloading the full repository:
 
 ```bash
 bash scripts/fetch_wtw_checkpoints.sh
