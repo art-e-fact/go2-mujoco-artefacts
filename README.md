@@ -12,7 +12,7 @@ With thanks to [Teddy Liao](https://github.com/Teddy-Liao) for the pretrained po
 ```bash
 # Clone required repos
 mkdir -p src
-git clone --depth=1 https://github.com/art-e-fact/unitree_mujoco.git src/unitree_mujoco
+git clone --depth=1 -b high-level-direct https://github.com/art-e-fact/unitree_mujoco.git src/unitree_mujoco
 git clone --depth=1 https://github.com/unitreerobotics/unitree_sdk2_python.git src/unitree_sdk2_python
 
 # Download WTW policy checkpoints (3 files only, no full repo clone)
