@@ -2,7 +2,7 @@
 Integration test for the Go2 WTW demo.
 
 go2_wtw_demo.py --headless manages the full stack internally
-(headless_bridge + sport_sim_server + SportClient).
+(sport_mujoco.py + SportClient).
 
 Run with: pytest tests/test_demo.py -v -s
 """
