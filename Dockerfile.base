@@ -21,7 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /ws/src
 
-RUN git clone --depth 1 https://github.com/unitreerobotics/unitree_mujoco.git
+RUN git clone -b high-level-direct --depth 1 https://github.com/art-e-fact/unitree_mujoco.git
 RUN git clone --depth=1 https://github.com/unitreerobotics/unitree_sdk2_python.git
 
 WORKDIR /ws
