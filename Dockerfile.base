@@ -16,16 +16,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     ffmpeg \
     git \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /ws/src
 
-# Only the 'runs' directory is required to use the pre-trained model
-RUN git clone --depth 1 https://github.com/Teddy-Liao/walk-these-ways-go2.git \
-    && find walk-these-ways-go2 -mindepth 1 -maxdepth 1 ! -name runs -exec rm -rf {} +
 RUN git clone --depth 1 https://github.com/unitreerobotics/unitree_mujoco.git
+RUN git clone --depth=1 https://github.com/unitreerobotics/unitree_sdk2_python.git
 
 WORKDIR /ws
+
+COPY scripts/fetch_wtw_checkpoints.sh .
+RUN ./fetch_wtw_checkpoints.sh
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
