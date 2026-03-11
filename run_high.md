@@ -1,10 +1,25 @@
 # Running the High-Level SDK with MuJoCo
 
-Three terminals, all run from the project root.
-
 ## Prerequisites
 
-The following manual changes are required after cloning `src/unitree_mujoco` (only once):
+### 1 — WTW policy checkpoints
+
+Place the three checkpoint files from the Walk-These-Ways pretrained Go2 policy into:
+
+```
+src/unitree_mujoco/simulate_python/wtw/
+  body_latest.jit
+  adaptation_module_latest.jit
+  parameters_cpu.pkl
+```
+
+Using sparse-checkout to avoid downloading the full repository:
+
+```bash
+bash scripts/fetch_wtw_checkpoints.sh
+```
+
+### 2 — unitree_mujoco config
 
 **`src/unitree_mujoco/simulate_python/config.py`** — disable joystick (otherwise the sim thread exits if no gamepad is connected):
 ```python
@@ -15,8 +30,37 @@ USE_JOYSTICK = 0
 ```python
 mujoco.mj_resetDataKeyframe(mj_model, mj_data, 0)  # start from "home" pose
 ```
+(Not needed for `sport_mujoco.py` — it handles this itself.)
 
-## Terminal 1 — Sport server (start this first)
+---
+
+## Option A — Direct integration (recommended, used by go2_wtw_demo.py)
+
+Two terminals. WTW runs inside the sim loop — no sync issues at any real-time factor.
+
+### Terminal 1 — Unified sim + sport server
+
+```bash
+cd src/unitree_mujoco/simulate_python
+PYTHONPATH=../../../src/unitree_sdk2_python python sport_mujoco.py
+```
+
+Wait for `Serving sport RPC.` — WTW model is loaded and viewer is open.
+
+### Terminal 2 — SDK client
+
+```bash
+cd src/unitree_sdk2_python
+PYTHONPATH=. python example/go2/high_level/go2_sport_client.py lo
+```
+
+---
+
+## Option B — Bridge-based (two-process, original approach)
+
+Three terminals. Requires manual start ordering. May desync if sim runs slower than real-time.
+
+### Terminal 1 — Sport server (start this first)
 
 ```bash
 cd src/unitree_mujoco/simulate_python
@@ -25,7 +69,7 @@ PYTHONPATH=../../../src/unitree_sdk2_python python sport_sim_server.py
 
 Wait for `Serving sport RPC. Waiting for bridge…` — WTW model is fully loaded.
 
-## Terminal 2 — MuJoCo simulator (start after sport server is ready)
+### Terminal 2 — MuJoCo simulator (start after sport server is ready)
 
 ```bash
 cd src/unitree_mujoco/simulate_python
@@ -33,16 +77,19 @@ PYTHONPATH=../../../src/unitree_sdk2_python python unitree_mujoco.py
 ```
 
 The viewer opens. Sport server prints `Bridge connected` then `Standing complete.`
-within ~0.5 s. The robot holds its keyframe pose and WTW takes over immediately.
 
-## Terminal 3 — SDK client
+### Terminal 3 — SDK client
 
 ```bash
 cd src/unitree_sdk2_python
 PYTHONPATH=. python example/go2/high_level/go2_sport_client.py lo
 ```
 
-At the `Enter id or name:` prompt, enter a command ID or name:
+---
+
+## SDK commands
+
+At the `Enter id or name:` prompt:
 
 | ID | Name | Effect |
 |----|------|--------|

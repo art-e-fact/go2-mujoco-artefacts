@@ -5,3 +5,4 @@ torch
 mediapy
 artefacts-cli
 pygame
+opencv-python
