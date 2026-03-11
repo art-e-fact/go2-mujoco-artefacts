@@ -1,4 +1,4 @@
-FROM tomolnorman/go2-mujoco-artefacts:latest
+FROM public.ecr.aws/artefacts/go2:mujoco
 
 WORKDIR /ws
 
