@@ -16,6 +16,7 @@ import pytest
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SDK_PATH    = os.path.join(PROJECT_DIR, "src", "unitree_sdk2_python")
+SCENE_PATH  = os.path.join(PROJECT_DIR, "src", "unitree_mujoco", "unitree_robots", "go2", "scene_flat.xml")
 OUTPUT_DIR  = os.environ.get("ARTEFACTS_SCENARIO_UPLOAD_DIR", os.path.join(PROJECT_DIR, "output"))
 ENV         = {**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONPATH": SDK_PATH}
 
@@ -37,6 +38,7 @@ def test_square_path_one_cycle():
     result = subprocess.run(
         [get_python_executable(), "-u", "go2_wtw_demo.py",
          "--headless", "--cycles", "1",
+         "--scene",        SCENE_PATH,
          "--record",       spectator_mp4,
          "--record-front", front_mp4,
          "--interface", "lo", "--domain", "0"],
