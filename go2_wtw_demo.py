@@ -303,6 +303,7 @@ def main():
     parser = argparse.ArgumentParser(description="Go2 Walk-These-Ways Demo")
     parser.add_argument("--cycles", type=int, default=0, help="Exit after N cycles (0 = run forever)")
     parser.add_argument("--record", type=str, default=None, help="Record video to this file path (e.g. output/demo.mp4)")
+    parser.add_argument("--headless", action="store_true", help="Run without viewer (no display required)")
     args = parser.parse_args()
     
     # Paths
@@ -351,61 +352,65 @@ def main():
     print("Simple sequence: Forward -> Turn -> Forward -> Turn (repeat)")
     print("==========================================\n")
     
-    with mujoco.viewer.launch_passive(model, data) as viewer:
-        while viewer.is_running():
-            step_start = time.time()
-            
-            # Use sim time for consistent cycle timing
-            sim_time = step_count * model.opt.timestep
-            cycle_num = int(sim_time // 18.0)
-            cycle_time = sim_time % 18.0  # 18 second cycle
-            
-            # Exit after max_cycles if specified
-            if max_cycles > 0 and cycle_num >= max_cycles:
-                print(f"\nCompleted {max_cycles} cycle(s). Exiting.")
-                break
-            
-            # Build commands for square path
-            if cycle_time < 1.0:
-                commands = controller.get_commands()  # Stand still
-            elif cycle_time < 5.0:
-                commands = controller.get_commands(vx=0.5)  # Walk forward
-            elif cycle_time < 9.0:
-                commands = controller.get_commands(vx=0.2, vyaw=1.5)  # Forward + turn left
-            elif cycle_time < 13.0:
-                commands = controller.get_commands(vx=0.5)  # Walk forward
-            elif cycle_time < 17.0:
-                commands = controller.get_commands(vx=0.2, vyaw=1.5)  # Forward + turn left
-            else:
-                commands = controller.get_commands()  # Brief pause before cycle repeats
-            
-            # Policy step (at control frequency)
-            if step_count % control_decimation == 0:
-                target_pos = controller.step(data, commands)
-            
-            # PD control
-            current_pos = data.qpos[7:19]
-            current_vel = data.qvel[6:18]
-            torques_wtw = kp * (target_pos - current_pos) - kd * current_vel
-            data.ctrl[:] = torques_wtw[WTW_TO_MUJOCO_CTRL]
-            
-            # Physics step
-            mujoco.mj_step(model, data)
-            step_count += 1
+    def sim_step():
+        nonlocal step_count, target_pos
+        sim_time = step_count * model.opt.timestep
+        cycle_num = int(sim_time // 18.0)
+        cycle_time = sim_time % 18.0  # 18 second cycle
 
-            # Capture frame for video (at 50 fps)
-            if renderer and step_count % control_decimation == 0:
-                renderer.update_scene(data, record_cam)
-                frames.append(renderer.render().copy())
+        if max_cycles > 0 and cycle_num >= max_cycles:
+            print(f"\nCompleted {max_cycles} cycle(s). Exiting.")
+            return False
 
-            # Sync viewer
-            viewer.sync()
-            
-            # Real-time sync
-            elapsed_sim = time.time() - step_start
-            sleep_time = model.opt.timestep - elapsed_sim
-            if sleep_time > 0:
-                time.sleep(sleep_time)
+        # Build commands for square path
+        if cycle_time < 1.0:
+            commands = controller.get_commands()  # Stand still
+        elif cycle_time < 5.0:
+            commands = controller.get_commands(vx=0.5)  # Walk forward
+        elif cycle_time < 9.0:
+            commands = controller.get_commands(vx=0.2, vyaw=1.5)  # Forward + turn left
+        elif cycle_time < 13.0:
+            commands = controller.get_commands(vx=0.5)  # Walk forward
+        elif cycle_time < 17.0:
+            commands = controller.get_commands(vx=0.2, vyaw=1.5)  # Forward + turn left
+        else:
+            commands = controller.get_commands()  # Brief pause before cycle repeats
+
+        # Policy step (at control frequency)
+        if step_count % control_decimation == 0:
+            target_pos = controller.step(data, commands)
+
+        # PD control
+        current_pos = data.qpos[7:19]
+        current_vel = data.qvel[6:18]
+        torques_wtw = kp * (target_pos - current_pos) - kd * current_vel
+        data.ctrl[:] = torques_wtw[WTW_TO_MUJOCO_CTRL]
+
+        # Physics step
+        mujoco.mj_step(model, data)
+        step_count += 1
+
+        # Capture frame for video (at 50 fps)
+        if renderer and step_count % control_decimation == 0:
+            renderer.update_scene(data, record_cam)
+            frames.append(renderer.render().copy())
+
+        return True
+
+    if args.headless:
+        while sim_step():
+            pass
+    else:
+        with mujoco.viewer.launch_passive(model, data) as viewer:
+            while viewer.is_running():
+                step_start = time.time()
+                if not sim_step():
+                    break
+                viewer.sync()
+                elapsed_sim = time.time() - step_start
+                sleep_time = model.opt.timestep - elapsed_sim
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
 
     # Save video after sim loop ends
     if renderer and frames:

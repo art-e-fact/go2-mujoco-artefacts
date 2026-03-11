@@ -1,0 +1,31 @@
+FROM nvidia/cuda:12.8.1-base-ubuntu22.04
+
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics
+# MuJoCo needs a display context for passive viewer; use EGL for offscreen
+ENV MUJOCO_GL=egl
+
+SHELL ["/bin/bash", "-c"]
+
+# System deps for MuJoCo rendering (EGL/offscreen) and video encoding
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1 \
+    libglfw3 \
+    libgles2 \
+    libegl1 \
+    libglib2.0-0 \
+    python3-pip \
+    ffmpeg \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /ws/src
+
+# Only the 'runs' directory is required to use the pre-trained model
+RUN git clone --depth 1 https://github.com/Teddy-Liao/walk-these-ways-go2.git \
+    && find walk-these-ways-go2 -mindepth 1 -maxdepth 1 ! -name runs -exec rm -rf {} +
+RUN git clone --depth 1 https://github.com/unitreerobotics/unitree_mujoco.git
+
+WORKDIR /ws
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
