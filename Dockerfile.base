@@ -14,20 +14,34 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libegl1 \
     libglib2.0-0 \
     python3-pip \
+    python3-dev \
     ffmpeg \
     git \
     curl \
+    cmake \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
+
+# CycloneDDS (required by unitree_sdk2_python)
+RUN git clone https://github.com/eclipse-cyclonedds/cyclonedds -b releases/0.10.x --depth 1 /opt/cyclonedds \
+    && mkdir /opt/cyclonedds/build /opt/cyclonedds/install \
+    && cd /opt/cyclonedds/build \
+    && cmake .. -DCMAKE_INSTALL_PREFIX=/opt/cyclonedds/install \
+    && cmake --build . --target install
+
+ENV CYCLONEDDS_HOME=/opt/cyclonedds/install
 
 WORKDIR /ws/src
 
 RUN git clone -b high-level-direct --depth 1 https://github.com/art-e-fact/unitree_mujoco.git
 RUN git clone --depth=1 https://github.com/unitreerobotics/unitree_sdk2_python.git
 
+RUN pip install --no-cache-dir ./unitree_sdk2_python
+
 WORKDIR /ws
 
-COPY scripts/fetch_wtw_checkpoints.sh .
-RUN ./fetch_wtw_checkpoints.sh
+COPY scripts/fetch_wtw_checkpoints.sh scripts/
+RUN ./scripts/fetch_wtw_checkpoints.sh
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
