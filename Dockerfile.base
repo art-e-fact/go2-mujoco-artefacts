@@ -43,5 +43,18 @@ WORKDIR /ws
 COPY scripts/fetch_wtw_checkpoints.sh scripts/
 RUN ./scripts/fetch_wtw_checkpoints.sh
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Use this for cpu-torch (smaller image size)
+RUN pip install --no-cache-dir \
+    --extra-index-url https://download.pytorch.org/whl/cpu \
+    "mujoco>=3.5.0" \
+    "numpy>=2.0.0" \
+    "pytest>=8.0.0" \
+    torch \
+    mediapy \
+    artefacts-cli \
+    pygame \
+    opencv-python
+
+# Use this for gpu-torch (CUDA drivers, large image size)
+# COPY requirements.txt .
+# RUN pip install --no-cache-dir -r requirements.txt
