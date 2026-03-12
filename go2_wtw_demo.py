@@ -16,6 +16,8 @@ import os
 import time
 import threading
 import subprocess
+from utils import get_python_executable
+
 _HERE    = os.path.dirname(os.path.abspath(__file__))
 _SIM_DIR = os.path.join(_HERE, "src", "unitree_mujoco", "simulate_python")
 _SDK_DIR = os.path.join(_HERE, "src", "unitree_sdk2_python")
@@ -50,10 +52,11 @@ def main():
     import argparse
     from unitree_sdk2py.core.channel import ChannelFactoryInitialize
     from unitree_sdk2py.go2.sport.sport_client import SportClient
+    import config
 
     parser = argparse.ArgumentParser(description="Go2 Walk-These-Ways Demo")
     parser.add_argument("--cycles",    type=int,   default=1,   help="Number of square-path cycles")
-    parser.add_argument("--interface", default="lo",             help="Network interface")
+    parser.add_argument("--interface", default=config.INTERFACE, help="Network interface")
     parser.add_argument("--domain",    type=int,   default=0,   help="DDS domain ID")
     parser.add_argument("--headless",  action="store_true",      help="No viewer (use for testing/CI)")
     parser.add_argument("--scene",         metavar="PATH", default=None,
@@ -72,7 +75,7 @@ def main():
 
     try:
         # --- sport_mujoco.py: unified sim + WTW + RPC server in one process ---
-        sim_cmd = [sys.executable, "-u", os.path.join(_SIM_DIR, "sport_mujoco.py"),
+        sim_cmd = [get_python_executable(), "-u", os.path.join(_SIM_DIR, "sport_mujoco.py"),
                    "--interface", args.interface, "--domain", str(args.domain)]
         if args.headless:
             sim_cmd.append("--headless")
