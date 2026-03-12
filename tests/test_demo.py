@@ -9,25 +9,18 @@ Run with: pytest tests/test_demo.py -v -s
 
 import os
 import sys
-import platform
-import shutil
 import subprocess
 import pytest
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, PROJECT_DIR)
+
+from utils import get_python_executable
+
 SDK_PATH    = os.path.join(PROJECT_DIR, "src", "unitree_sdk2_python")
 SCENE_PATH  = os.path.join(PROJECT_DIR, "src", "unitree_mujoco", "unitree_robots", "go2", "scene_flat.xml")
 OUTPUT_DIR  = os.environ.get("ARTEFACTS_SCENARIO_UPLOAD_DIR", os.path.join(PROJECT_DIR, "output"))
 ENV         = {**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONPATH": SDK_PATH}
-
-
-def get_python_executable():
-    """Get the appropriate Python executable for the platform."""
-    if platform.system() == "Darwin":
-        mjpython = shutil.which("mjpython")
-        if mjpython:
-            return mjpython
-    return sys.executable
 
 
 def test_square_path_one_cycle():
@@ -40,8 +33,7 @@ def test_square_path_one_cycle():
          "--headless", "--cycles", "1",
          "--scene",        SCENE_PATH,
          "--record",       spectator_mp4,
-         "--record-front", front_mp4,
-         "--interface", "lo", "--domain", "0"],
+         "--record-front", front_mp4],
         cwd=PROJECT_DIR,
         capture_output=True, text=True,
         timeout=60,
