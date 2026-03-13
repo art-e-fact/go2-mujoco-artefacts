@@ -18,9 +18,6 @@ git clone --depth=1 https://github.com/unitreerobotics/unitree_sdk2_python.git s
 # Download WTW policy checkpoints (3 files only, no full repo clone)
 bash scripts/fetch_wtw_checkpoints.sh
 
-# Copy flat scene to unitree_mujoco
-cp resources/scene_flat.xml src/unitree_mujoco/unitree_robots/go2/
-
 # Create virtual environment
 python3 -m venv venv
 source venv/bin/activate
