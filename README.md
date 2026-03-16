@@ -49,3 +49,8 @@ artefacts run basic_test
 ```
 
 Once the test has finished, test result (and a video) will be uploaded to your project page on the artefacts dashboard
+
+
+## Atributions
+
+Rail scene based on work from sBjamms https://sketchfab.com/3d-models/train-track-dff84793ce2f4d7ca19e67b5194eeca2
