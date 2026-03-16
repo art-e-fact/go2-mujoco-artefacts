@@ -139,15 +139,15 @@ def main():
             print(f"[demo] Front camera recording → {os.path.abspath(args.record_front)}")
 
         print(f"\n=== Walk-These-Ways Go2 Square Demo ({args.cycles} cycle(s)) ===")
-        print("Sequence per cycle: forward 4 s → turn 4 s → forward 4 s → turn 4 s")
+        print("Sequence per cycle: turn 5 s → forward 8 s → turn 3 s → forward 5 s")
         print("=================================================================\n")
 
         for cycle in range(args.cycles):
             print(f"Cycle {cycle + 1}/{args.cycles}")
-            client.Move(0.5, 0.0, 0.0);  time.sleep(4.0)   # forward
-            client.Move(0.2, 0.0, 1.5);  time.sleep(4.0)   # forward + turn left
-            client.Move(0.5, 0.0, 0.0);  time.sleep(4.0)   # forward
-            client.Move(0.2, 0.0, 1.5);  time.sleep(4.0)   # forward + turn left
+            client.Move(0.0, 0.0, 2.5);  time.sleep(5.0)   # forward
+            client.Move(0.4, 0.0, 0.0);  time.sleep(8.0)   # forward
+            client.Move(0.0, 0.0, -2.5);  time.sleep(3.0)   # forward + turn right
+            client.Move(0.4, 0.0, 0.0);  time.sleep(5.0)   # forward
 
         client.StopMove()
         print(f"\nCompleted {args.cycles} cycle(s).")
