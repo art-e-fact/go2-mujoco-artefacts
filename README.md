@@ -17,13 +17,27 @@ git clone --depth=1 https://github.com/unitreerobotics/unitree_sdk2_python.git s
 
 # Download WTW policy checkpoints (3 files only, no full repo clone)
 bash scripts/fetch_wtw_checkpoints.sh
+```
 
+### Venv
+
+```bash
 # Create virtual environment
 python3 -m venv venv
 source venv/bin/activate
 # Install dependencies
 pip install -r requirements.txt
 ```
+
+### Pixi
+
+```bash
+# cyclonedds dependencies are buggy, this fixes it
+bash ./scripts/fix_unitree_sdk2_for_pixi.sh
+# enter the shell of the environment
+pixi shell
+```
+
 ## Run (Linux)
 ```bash
 source venv/bin/activate # if not already
