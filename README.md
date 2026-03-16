@@ -18,9 +18,6 @@ git clone --depth=1 https://github.com/unitreerobotics/unitree_sdk2_python.git s
 # Download WTW policy checkpoints (3 files only, no full repo clone)
 bash scripts/fetch_wtw_checkpoints.sh
 
-# Copy flat scene to unitree_mujoco
-cp resources/scene_flat.xml src/unitree_mujoco/unitree_robots/go2/
-
 # Create virtual environment
 python3 -m venv venv
 source venv/bin/activate
@@ -52,3 +49,8 @@ artefacts run basic_test
 ```
 
 Once the test has finished, test result (and a video) will be uploaded to your project page on the artefacts dashboard
+
+
+## Atributions
+
+Rail scene based on work from sBjamms https://sketchfab.com/3d-models/train-track-dff84793ce2f4d7ca19e67b5194eeca2

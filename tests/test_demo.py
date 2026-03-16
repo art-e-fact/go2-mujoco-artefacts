@@ -18,7 +18,7 @@ sys.path.insert(0, PROJECT_DIR)
 from utils import get_python_executable
 
 SDK_PATH    = os.path.join(PROJECT_DIR, "src", "unitree_sdk2_python")
-SCENE_PATH  = os.path.join(PROJECT_DIR, "src", "unitree_mujoco", "unitree_robots", "go2", "scene_flat.xml")
+SCENE_PATH  = os.path.join(PROJECT_DIR, "resources", "scene_rail_track.xml")
 OUTPUT_DIR  = os.environ.get("ARTEFACTS_SCENARIO_UPLOAD_DIR", os.path.join(PROJECT_DIR, "output"))
 ENV         = {**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONPATH": SDK_PATH}
 
