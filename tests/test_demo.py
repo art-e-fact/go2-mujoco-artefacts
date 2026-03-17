@@ -35,7 +35,7 @@ def test_square_path_one_cycle():
          "--scene",          SCENE_PATH,
          "--record",         spectator_mp4,
          "--record-front",   front_mp4,
-         "--telemetry",      telemetry_jsonl,
+         "--telemetry",      telemetry_jsonl],
         cwd=PROJECT_DIR,
         capture_output=True, text=True,
         timeout=60,
