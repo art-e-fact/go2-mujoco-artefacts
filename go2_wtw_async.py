@@ -278,20 +278,23 @@ def load_go2_urdf():
     logger.debug("urdf logged on rerun")
 
 def setup_rerun():
-    rr.init("rerun_example_dna_abacus")
+    rr.init("go2_artefacts")
     rr.save("data.rrd")
     rr.connect_grpc()
     rr.set_time("sim_time", duration=0)
     rr.set_time("sim_step", sequence=0)
-    logger.debug("starting sim proc")
-
-async def pre_main():
-    setup_rerun()
-    p = sim_subproc()
-    sub = aforio.from_proc_stdout(p)
     try:
         load_rail_urdf()
         load_go2_urdf()
+    except RuntimeError:
+        print("\n\n /!\\ \n Start rerun FIRST using: `pixi run rerun ./rerun_template.rbl` \n Then restart this sim to see the data live. \n The archive `data.rrd` cannot be opened for some reasons. \n /!\\ \n\n")
+
+async def pre_main():
+    setup_rerun()
+    logger.debug("starting sim proc")
+    p = sim_subproc()
+    sub = aforio.from_proc_stdout(p)
+    try:
         await ready_up(sub)
         async with asyncio.TaskGroup() as tg:
             logger.debug("Starting tasks")

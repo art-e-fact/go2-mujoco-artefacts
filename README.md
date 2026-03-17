@@ -29,18 +29,18 @@ bash ./scripts/fix_unitree_sdk2_for_pixi.sh
 pixi install
 ```
 
+## Visualize (Rerun)
+
+(opening the archive is bugged, so you have to launch rerun first to see anything)
+
+```bash
+pixi run rerun
+```
+
 ## Run
 
 ```bash
 pixi run python ./go2_wtw_async.py
-```
-
-## Visualize (Rerun)
-
-(opening the archive is bugged, idk why you have to be live)
-
-```bash
-pixi run rerun
 ```
 
 ### Run test with artefacts
