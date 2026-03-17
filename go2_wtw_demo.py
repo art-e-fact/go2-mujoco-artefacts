@@ -16,7 +16,7 @@ import os
 import time
 import threading
 import subprocess
-from utils import get_python_executable, sim_sleep, last_sim_time
+from utils import get_python_executable, sim_sleep, last_sim_time, FrontCameraRecorder
 
 _HERE    = os.path.dirname(os.path.abspath(__file__))
 _SIM_DIR = os.path.join(_HERE, "src", "unitree_mujoco", "simulate_python")
@@ -74,9 +74,7 @@ def main():
 
     env = {**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONPATH": _SDK_DIR}
     procs = []
-    front_ffmpeg = None
-    front_stop   = None
-    front_thread = None
+    recorder = None
 
     try:
         # --- sport_mujoco.py: unified sim + WTW + RPC server in one process ---
@@ -116,37 +114,12 @@ def main():
         client.SetTimeout(10.0)
         client.Init()
 
-        # --- Front-camera recorder ------------------------------------------
-        if args.record_front:
-            from unitree_sdk2py.go2.video.video_client import VideoClient
-            front_stop = threading.Event()
-            front_ffmpeg = subprocess.Popen([
-                "ffmpeg", "-y",
-                "-f", "mjpeg", "-r", "30", "-i", "pipe:",
-                "-vcodec", "libx264", "-pix_fmt", "yuv420p",
-                "-movflags", "+faststart",
-                os.path.abspath(args.record_front),
-            ], stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
-
-            def _record_front():
-                vclient = VideoClient()
-                vclient.SetTimeout(3.0)
-                vclient.Init()
-                while not front_stop.is_set():
-                    code, data = vclient.GetImageSample()
-                    if code == 0 and data:
-                        try:
-                            front_ffmpeg.stdin.write(bytes(data))
-                        except BrokenPipeError:
-                            break
-                    time.sleep(1 / 30)
-
-            front_thread = threading.Thread(target=_record_front, daemon=True)
-            front_thread.start()
-            print(f"[demo] Front camera recording → {os.path.abspath(args.record_front)}")
-
         telemetry_path = os.path.abspath(args.telemetry) if args.telemetry else None
         sleep = (lambda dt: sim_sleep(dt, telemetry_path)) if telemetry_path else time.sleep
+
+        if args.record_front:
+            recorder = FrontCameraRecorder(args.record_front)
+            recorder.start()
 
         print(f"\n=== Walk-These-Ways Go2 Square Demo ({args.cycles} cycle(s)) ===")
         print("Sequence per cycle: turn 5 s → forward 8 s → turn 3 s → forward 5 s")
@@ -169,14 +142,8 @@ def main():
         print(f"\nCompleted {args.cycles} cycle(s).")
 
     finally:
-        if front_stop is not None:
-            front_stop.set()
-        if front_thread is not None:
-            front_thread.join(timeout=2)
-        if front_ffmpeg is not None:
-            front_ffmpeg.stdin.close()
-            front_ffmpeg.wait()
-            print(f"[demo] Front camera recording saved: {os.path.abspath(args.record_front)}")
+        if recorder is not None:
+            recorder.stop()
         _stop(procs)
 
 
