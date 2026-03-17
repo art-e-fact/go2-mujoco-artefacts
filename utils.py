@@ -1,4 +1,7 @@
 import json
+import os
+import subprocess
+import threading
 import time
 import traceback
 import platform
@@ -94,6 +97,65 @@ def make_jsonl_chart(
                 f.write(f"{x},{y}\n")
     except Exception as e:
         print(f"ERROR: Unable to create chart for {chart_name}.", *traceback.format_exception(e))
+
+
+class FrontCameraRecorder:
+    """Records the Go2 front camera to an mp4 via ffmpeg.
+
+    Usage:
+        with FrontCameraRecorder("/path/to/front.mp4") as recorder:
+            # ... run demo ...
+    """
+
+    def __init__(self, output_path: str, fps: int = 30):
+        self.output_path = os.path.abspath(output_path)
+        self.fps = fps
+        self._stop = threading.Event()
+        self._ffmpeg = None
+        self._thread = None
+
+    def start(self):
+        self._ffmpeg = subprocess.Popen(
+            ["ffmpeg", "-y",
+             "-f", "mjpeg", "-r", str(self.fps), "-i", "pipe:",
+             "-vcodec", "libx264", "-pix_fmt", "yuv420p",
+             "-movflags", "+faststart",
+             self.output_path],
+            stdin=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        )
+        self._thread = threading.Thread(target=self._capture, daemon=True)
+        self._thread.start()
+        print(f"[demo] Front camera recording → {self.output_path}")
+
+    def stop(self):
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=2)
+        if self._ffmpeg is not None:
+            self._ffmpeg.stdin.close()
+            self._ffmpeg.wait()
+            print(f"[demo] Front camera recording saved: {self.output_path}")
+
+    def _capture(self):
+        from unitree_sdk2py.go2.video.video_client import VideoClient
+        vclient = VideoClient()
+        vclient.SetTimeout(3.0)
+        vclient.Init()
+        while not self._stop.is_set():
+            code, data = vclient.GetImageSample()
+            if code == 0 and data:
+                try:
+                    self._ffmpeg.stdin.write(bytes(data))
+                except BrokenPipeError:
+                    break
+            time.sleep(1 / self.fps)
+
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, *_):
+        self.stop()
 
 
 def get_python_executable():

@@ -45,7 +45,7 @@ def test_square_path_one_cycle():
          "--rotation-speed", rotation_speed],
         cwd=PROJECT_DIR,
         capture_output=True, text=True,
-        timeout=60,
+        timeout=120,
         env=ENV,
     )
     print(result.stdout)
