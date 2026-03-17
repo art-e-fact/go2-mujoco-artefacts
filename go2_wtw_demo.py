@@ -16,7 +16,7 @@ import os
 import time
 import threading
 import subprocess
-from utils import get_python_executable
+from utils import get_python_executable, sim_sleep, last_sim_time
 
 _HERE    = os.path.dirname(os.path.abspath(__file__))
 _SIM_DIR = os.path.join(_HERE, "src", "unitree_mujoco", "simulate_python")
@@ -61,6 +61,8 @@ def main():
     parser.add_argument("--headless",  action="store_true",      help="No viewer (use for testing/CI)")
     parser.add_argument("--scene",         metavar="PATH", default=None,
                         help="MuJoCo scene XML (passed to sport_mujoco.py; defaults to config.ROBOT_SCENE)")
+    parser.add_argument("--telemetry",      metavar="PATH", default=None,
+                        help="Write simulation state (qpos/qvel) as JSONL to PATH")
     parser.add_argument("--record",       metavar="PATH", default=None,
                         help="Save spectator-view recording (passed to sport_mujoco.py)")
     parser.add_argument("--record-front", metavar="PATH", default=None,
@@ -83,6 +85,8 @@ def main():
             sim_cmd += ["--scene", os.path.abspath(args.scene)]
         if args.record:
             sim_cmd += ["--record", os.path.abspath(args.record)]
+        if args.telemetry:
+            sim_cmd += ["--telemetry", os.path.abspath(args.telemetry)]
 
         sim_proc = subprocess.Popen(
             sim_cmd, cwd=_SIM_DIR,
@@ -138,16 +142,25 @@ def main():
             front_thread.start()
             print(f"[demo] Front camera recording → {os.path.abspath(args.record_front)}")
 
+        telemetry_path = os.path.abspath(args.telemetry) if args.telemetry else None
+        sleep = (lambda dt: sim_sleep(dt, telemetry_path)) if telemetry_path else time.sleep
+
         print(f"\n=== Walk-These-Ways Go2 Square Demo ({args.cycles} cycle(s)) ===")
         print("Sequence per cycle: turn 5 s → forward 8 s → turn 3 s → forward 5 s")
         print("=================================================================\n")
 
+
+        v_forward      = 0.4
+        v_lateral      = 0.4
+        rotation_speed = 2.5
+        print(f"Params: v_forward={v_forward} v_lateral={v_lateral} rotation_speed={rotation_speed}")
+
         for cycle in range(args.cycles):
             print(f"Cycle {cycle + 1}/{args.cycles}")
-            client.Move(0.0, 0.0, 2.5);  time.sleep(5.0)   # forward
-            client.Move(0.4, 0.0, 0.0);  time.sleep(8.0)   # forward
-            client.Move(0.0, 0.0, -2.5);  time.sleep(3.0)   # forward + turn right
-            client.Move(0.4, 0.0, 0.0);  time.sleep(5.0)   # forward
+            client.Move(0.0,      v_lateral, rotation_speed);  sleep(2.5)   # turn left
+            client.Move(v_forward, v_lateral, 0.0);             sleep(4.0)   # forward
+            client.Move(0.0,      v_lateral, -rotation_speed); sleep(2.5)   # turn right
+            client.Move(v_forward, v_lateral, 0.0);             sleep(3.0)   # forward
 
         client.StopMove()
         print(f"\nCompleted {args.cycles} cycle(s).")
