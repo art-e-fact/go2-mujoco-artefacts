@@ -25,15 +25,17 @@ ENV         = {**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONPATH": SDK_PATH}
 
 def test_square_path_one_cycle():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
-    spectator_mp4 = os.path.join(OUTPUT_DIR, "run.mp4")
-    front_mp4     = os.path.join(OUTPUT_DIR, "front.mp4")
+    spectator_mp4   = os.path.join(OUTPUT_DIR, "run.mp4")
+    front_mp4       = os.path.join(OUTPUT_DIR, "front.mp4")
+    telemetry_jsonl = os.path.join(OUTPUT_DIR, "telemetry.jsonl")
 
     result = subprocess.run(
         [get_python_executable(), "-u", "go2_wtw_demo.py",
          "--headless", "--cycles", "1",
-         "--scene",        SCENE_PATH,
-         "--record",       spectator_mp4,
-         "--record-front", front_mp4],
+         "--scene",          SCENE_PATH,
+         "--record",         spectator_mp4,
+         "--record-front",   front_mp4,
+         "--telemetry",      telemetry_jsonl],
         cwd=PROJECT_DIR,
         capture_output=True, text=True,
         timeout=60,
