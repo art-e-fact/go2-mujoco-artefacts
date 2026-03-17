@@ -1,0 +1,40 @@
+<?xml version="1.0"?>
+<robot name="scene">
+
+  <!-- Explicit world link -->
+  <link name="world"/>
+
+  <!-- First mesh -->
+  <link name="rails">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+      <mesh filename="package://resources/model/meshId0.obj" scale="0.01 0.01 0.01"/>
+      </geometry>
+    </visual>
+  </link>
+
+  <joint name="world_to_mesh_1" type="fixed">
+    <parent link="world"/>
+    <child link="rails"/>
+    <origin xyz="-0.8 1.5 0.09" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Second mesh -->
+  <link name="gravel">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+      <mesh filename="package://resources/model/meshId1.obj" scale="0.01 0.01 0.01"/>
+      </geometry>
+    </visual>
+  </link>
+
+  <joint name="world_to_mesh_2" type="fixed">
+    <parent link="world"/>
+    <child link="gravel"/>
+    <!-- pose of gravel relative to rails -->
+    <origin xyz="-0.4 1.5 0.06" rpy="0 0 0"/>
+  </joint>
+
+</robot>

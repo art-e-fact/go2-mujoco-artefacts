@@ -12,21 +12,12 @@ With thanks to [Teddy Liao](https://github.com/Teddy-Liao) for the pretrained po
 ```bash
 # Clone required repos
 mkdir -p src
-git clone --depth=1 -b high-level-direct https://github.com/art-e-fact/unitree_mujoco.git src/unitree_mujoco
+git clone --depth=1 -b high-level-direct-elian https://github.com/art-e-fact/unitree_mujoco.git src/unitree_mujoco
 git clone --depth=1 https://github.com/unitreerobotics/unitree_sdk2_python.git src/unitree_sdk2_python
+git clone --depth=1 https://github.com/unitreerobotics/unitree_ros.git src/go2_urdf
 
 # Download WTW policy checkpoints (3 files only, no full repo clone)
 bash scripts/fetch_wtw_checkpoints.sh
-```
-
-### Venv
-
-```bash
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate
-# Install dependencies
-pip install -r requirements.txt
 ```
 
 ### Pixi
@@ -35,20 +26,22 @@ pip install -r requirements.txt
 # cyclonedds dependencies are buggy, this fixes it
 bash ./scripts/fix_unitree_sdk2_for_pixi.sh
 # enter the shell of the environment
-pixi shell
+pixi install
 ```
 
-## Run (Linux)
+## Run
+
 ```bash
-source venv/bin/activate # if not already
-python go2_wtw_demo.py
+pixi run python ./go2_wtw_async.py
 ```
-## Run (MacOS)
+
+## Visualize (Rerun)
+
+(opening the archive is bugged, idk why you have to be live)
+
 ```bash
-source venv/bin/activate # if not already
-mjpython go2_wtw_demo.py
+pixi run rerun
 ```
-The robot will walk forward and turn left in a loop.
 
 ### Run test with artefacts
 
