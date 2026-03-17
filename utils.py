@@ -50,6 +50,52 @@ def sim_sleep(dt, telemetry_path, poll=0.05):
         time.sleep(poll)
 
 
+def make_jsonl_chart(
+    filepath: str,
+    attr_x: str,
+    attr_y: str,
+    output_dir: str,
+    chart_name: str,
+    field_unit: Optional[str] = None,
+):
+    try:
+        x_plot_name = f"{attr_x} ({field_unit})" if field_unit else attr_x
+        y_plot_name = f"{attr_y} ({field_unit})" if field_unit else attr_y
+
+        topic_x = attr_x.split(".")
+        topic_y = attr_y.split(".")
+        if "time" in topic_x:
+            x_plot_name = "Time (s)"
+        if "time" in topic_y:
+            y_plot_name = "Time (s)"
+
+        x_data, y_data = [], []
+        with open(filepath) as f:
+            for line in f:
+                jdict = json.loads(line)
+                x = y = None
+                with suppress(KeyError, IndexError):
+                    x = _get_deep_attr_from_dict(jdict, topic_x)
+                with suppress(KeyError, IndexError):
+                    y = _get_deep_attr_from_dict(jdict, topic_y)
+                if x is None and y is None:
+                    continue
+                if x is None and x_data:
+                    x = x_data[-1]
+                if y is None and y_data:
+                    y = y_data[-1]
+                x_data.append(x)
+                y_data.append(y)
+
+        output_filepath = f"{output_dir}/{chart_name}.csv"
+        with open(output_filepath, "w") as f:
+            f.write(f"{x_plot_name},{y_plot_name}\n")
+            for x, y in zip(x_data, y_data):
+                f.write(f"{x},{y}\n")
+    except Exception as e:
+        print(f"ERROR: Unable to create chart for {chart_name}.", *traceback.format_exception(e))
+
+
 def get_python_executable():
     """Return mjpython on macOS (needed for MuJoCo viewer), else sys.executable."""
     if platform.system() == "Darwin":
