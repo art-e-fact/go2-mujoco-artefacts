@@ -29,13 +29,20 @@ def test_square_path_one_cycle():
     front_mp4       = os.path.join(OUTPUT_DIR, "front.mp4")
     telemetry_jsonl = os.path.join(OUTPUT_DIR, "telemetry.jsonl")
 
+    v_forward      = os.environ.get("v_forward",      "0.4")
+    v_lateral      = os.environ.get("v_lateral",      "0.0")
+    rotation_speed = os.environ.get("rotation_speed", "2.5")
+
     result = subprocess.run(
         [get_python_executable(), "-u", "go2_wtw_demo.py",
          "--headless", "--cycles", "1",
          "--scene",          SCENE_PATH,
          "--record",         spectator_mp4,
          "--record-front",   front_mp4,
-         "--telemetry",      telemetry_jsonl],
+         "--telemetry",      telemetry_jsonl,
+         "--v-forward",      v_forward,
+         "--v-lateral",      v_lateral,
+         "--rotation-speed", rotation_speed],
         cwd=PROJECT_DIR,
         capture_output=True, text=True,
         timeout=60,

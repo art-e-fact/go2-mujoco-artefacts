@@ -97,6 +97,9 @@ def main():
                         help="Save spectator-view recording (passed to sport_mujoco.py)")
     parser.add_argument("--record-front", metavar="PATH", default=None,
                         help="Save front-camera recording to PATH (e.g. front.mp4)")
+    parser.add_argument("--v-forward",      type=float, default=0.4,  help="Forward velocity (m/s)")
+    parser.add_argument("--v-lateral",      type=float, default=0.0,  help="Lateral velocity (m/s)")
+    parser.add_argument("--rotation-speed", type=float, default=2.5,  help="Rotation speed (rad/s)")
     args = parser.parse_args()
 
     env = {**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONPATH": _SDK_DIR}
@@ -180,16 +183,16 @@ def main():
         print("=================================================================\n")
 
 
-        v_forward      = 0.4
-        v_lateral      = 0.4
-        rotation_speed = 2.5
+        v_forward      = args.v_forward
+        v_lateral      = args.v_lateral
+        rotation_speed = args.rotation_speed
         print(f"Params: v_forward={v_forward} v_lateral={v_lateral} rotation_speed={rotation_speed}")
 
         for cycle in range(args.cycles):
             print(f"Cycle {cycle + 1}/{args.cycles}")
-            client.Move(0.0,      v_lateral, rotation_speed);  sleep(2.5)   # turn left
+            client.Move(0.0,      v_lateral, rotation_speed);  sleep(3.0)   # turn left
             client.Move(v_forward, v_lateral, 0.0);             sleep(4.0)   # forward
-            client.Move(0.0,      v_lateral, -rotation_speed); sleep(2.5)   # turn right
+            client.Move(0.0,      v_lateral, -rotation_speed); sleep(3.0)   # turn right
             client.Move(v_forward, v_lateral, 0.0);             sleep(3.0)   # forward
 
         client.StopMove()

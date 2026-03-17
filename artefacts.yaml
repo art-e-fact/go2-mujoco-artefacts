@@ -18,3 +18,7 @@ jobs:
         - name: "test movement"
           pytest_file: tests/test_demo.py
           output_dirs: ["output"]
+          params:
+            v_forward:      [0.2, 0.4]
+            v_lateral:      [0.0]
+            rotation_speed: [2.0]
