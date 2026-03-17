@@ -14,39 +14,9 @@ Usage:
 import sys
 import os
 import time
-import json
 import threading
 import subprocess
-from utils import get_python_executable
-
-
-def _last_sim_time(path):
-    """Return the last sim time from a telemetry JSONL file using a tail seek."""
-    try:
-        with open(path, "rb") as f:
-            f.seek(0, 2)
-            size = f.tell()
-            f.seek(max(0, size - 2048))
-            tail = f.read().decode("utf-8", errors="ignore")
-        last_line = [l for l in tail.splitlines() if l.strip()][-1]
-        return json.loads(last_line)["t"]
-    except (FileNotFoundError, IndexError, KeyError, json.JSONDecodeError):
-        return None
-
-
-def _sim_sleep(dt, telemetry_path, poll=0.05):
-    """Sleep for `dt` simulated seconds by polling the telemetry file."""
-    t0 = None
-    while t0 is None:
-        t0 = _last_sim_time(telemetry_path)
-        if t0 is None:
-            time.sleep(poll)
-    target = t0 + dt
-    while True:
-        t = _last_sim_time(telemetry_path)
-        if t is not None and t >= target:
-            break
-        time.sleep(poll)
+from utils import get_python_executable, sim_sleep, last_sim_time
 
 _HERE    = os.path.dirname(os.path.abspath(__file__))
 _SIM_DIR = os.path.join(_HERE, "src", "unitree_mujoco", "simulate_python")
@@ -173,7 +143,7 @@ def main():
             print(f"[demo] Front camera recording → {os.path.abspath(args.record_front)}")
 
         telemetry_path = os.path.abspath(args.telemetry) if args.telemetry else None
-        sleep = (lambda dt: _sim_sleep(dt, telemetry_path)) if telemetry_path else time.sleep
+        sleep = (lambda dt: sim_sleep(dt, telemetry_path)) if telemetry_path else time.sleep
 
         print(f"\n=== Walk-These-Ways Go2 Square Demo ({args.cycles} cycle(s)) ===")
         print("Sequence per cycle: turn 5 s → forward 8 s → turn 3 s → forward 5 s")
