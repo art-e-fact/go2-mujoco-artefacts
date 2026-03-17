@@ -15,7 +15,7 @@ import pytest
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_DIR)
 
-from utils import get_python_executable
+from utils import get_python_executable, make_jsonl_chart
 
 SDK_PATH    = os.path.join(PROJECT_DIR, "src", "unitree_sdk2_python")
 SCENE_PATH  = os.path.join(PROJECT_DIR, "resources", "scene_rail_track.xml")
@@ -48,3 +48,11 @@ def test_square_path_one_cycle():
     assert "Completed 1 cycle(s)." in result.stdout
     assert os.path.getsize(spectator_mp4) > 0, "Spectator recording is empty"
     assert os.path.getsize(front_mp4) > 0, "Front camera recording is empty"
+
+    make_jsonl_chart(
+        telemetry_jsonl,
+        attr_x="qpos.0", attr_y="qpos.1",
+        output_dir=OUTPUT_DIR,
+        chart_name="trajectory_xy",
+        field_unit="m",
+    )
