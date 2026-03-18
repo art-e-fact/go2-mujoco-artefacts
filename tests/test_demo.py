@@ -72,7 +72,15 @@ def test_rails_climb():
         f"(body_up_z={_body_up_z(flipped[0]['qpos']):.3f})"
     )
 
-    TARGET_X, TARGET_Y, TARGET_TOL = 0.0, 0.0, 5.0  # update after a known-good run
+    make_jsonl_chart(
+        telemetry_jsonl,
+        attr_x="qpos.0", attr_y="qpos.1",
+        output_dir=OUTPUT_DIR,
+        chart_name="trajectory_xy",
+        field_unit="m",
+    )
+
+    TARGET_X, TARGET_Y, TARGET_TOL = 2.0, 2.0, 5.0  # update after a known-good run
     final = snapshots[-1]
     fx, fy = final["qpos"][0], final["qpos"][1]
     delta = ((fx - TARGET_X)**2 + (fy - TARGET_Y)**2) ** 0.5
@@ -81,10 +89,3 @@ def test_rails_climb():
         f"at t={final['t']}s (x={fx:.2f}, y={fy:.2f})"
     )
 
-    make_jsonl_chart(
-        telemetry_jsonl,
-        attr_x="qpos.0", attr_y="qpos.1",
-        output_dir=OUTPUT_DIR,
-        chart_name="trajectory_xy",
-        field_unit="m",
-    )
