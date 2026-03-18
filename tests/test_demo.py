@@ -7,6 +7,7 @@ go2_wtw_demo.py --headless manages the full stack internally
 Run with: pytest tests/test_demo.py -v -s
 """
 
+import json
 import os
 import sys
 import subprocess
@@ -21,6 +22,12 @@ SDK_PATH    = os.path.join(PROJECT_DIR, "src", "unitree_sdk2_python")
 SCENE_PATH  = os.path.join(PROJECT_DIR, "resources", "scene_rail_track.xml")
 OUTPUT_DIR  = os.environ.get("ARTEFACTS_SCENARIO_UPLOAD_DIR", os.path.join(PROJECT_DIR, "output"))
 ENV         = {**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONPATH": SDK_PATH}
+
+
+def _body_up_z(qpos):
+    """Z component of the robot's up-axis from quaternion [w, x, y, z]. >0 = upright."""
+    w, x, y, z = qpos[3], qpos[4], qpos[5], qpos[6]
+    return 1.0 - 2.0 * (x*x + y*y)
 
 
 def test_square_path_one_cycle():
@@ -55,6 +62,15 @@ def test_square_path_one_cycle():
     assert "Completed 1 cycle(s)." in result.stdout
     assert os.path.getsize(spectator_mp4) > 0, "Spectator recording is empty"
     assert os.path.getsize(front_mp4) > 0, "Front camera recording is empty"
+
+    with open(telemetry_jsonl) as f:
+        snapshots = [json.loads(l) for l in f if l.strip()]
+    assert snapshots, "No telemetry snapshots written"
+    flipped = [s for s in snapshots if _body_up_z(s["qpos"]) <= 0]
+    assert not flipped, (
+        f"Robot was upside down at t={flipped[0]['t']}s "
+        f"(body_up_z={_body_up_z(flipped[0]['qpos']):.3f})"
+    )
 
     make_jsonl_chart(
         telemetry_jsonl,
