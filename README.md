@@ -9,18 +9,39 @@ With thanks to [Teddy Liao](https://github.com/Teddy-Liao) for the pretrained po
 
 ## Setup
 
+### Prerequisites
+
+You will need cyclonedds installed if you do not have it already. We suggest to install outside of this project.
 ```bash
+cd ~
+git clone https://github.com/eclipse-cyclonedds/cyclonedds -b releases/0.10.x 
+cd cyclonedds && mkdir build install && cd build
+cmake .. -DCMAKE_INSTALL_PREFIX=../install
+cmake --build . --target install
+```
+
+### Project Setup
+
+```bash
+cd ~/go2-mujoco-artefacts
+# Create virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
 # Clone required repos
 mkdir -p src
 git clone --depth=1 -b high-level-direct https://github.com/art-e-fact/unitree_mujoco.git src/unitree_mujoco
 git clone --depth=1 https://github.com/unitreerobotics/unitree_sdk2_python.git src/unitree_sdk2_python
+# Install the sdk
+cd src/unitree_sdk2_python
+export CYCLONEDDS_HOME=~/cyclonedds/install
+pip install -e .
 
+# Back to root of repository
+cd ../..
 # Download WTW policy checkpoints (3 files only, no full repo clone)
 bash scripts/fetch_wtw_checkpoints.sh
 
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate
 # Install dependencies
 pip install -r requirements.txt
 ```
