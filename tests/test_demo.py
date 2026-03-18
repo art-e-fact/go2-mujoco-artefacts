@@ -30,7 +30,7 @@ def _body_up_z(qpos):
     return 1.0 - 2.0 * (x*x + y*y)
 
 
-def test_square_path_one_cycle():
+def test_rails_climb():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     spectator_mp4   = os.path.join(OUTPUT_DIR, "run.mp4")
     front_mp4       = os.path.join(OUTPUT_DIR, "front.mp4")
