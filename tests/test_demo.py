@@ -72,6 +72,15 @@ def test_square_path_one_cycle():
         f"(body_up_z={_body_up_z(flipped[0]['qpos']):.3f})"
     )
 
+    TARGET_X, TARGET_Y, TARGET_TOL = 0.0, 0.0, 5.0  # update after a known-good run
+    final = snapshots[-1]
+    fx, fy = final["qpos"][0], final["qpos"][1]
+    delta = ((fx - TARGET_X)**2 + (fy - TARGET_Y)**2) ** 0.5
+    assert delta < TARGET_TOL, (
+        f"Robot finished {delta:.2f}m from target ({TARGET_X}, {TARGET_Y}) "
+        f"at t={final['t']}s (x={fx:.2f}, y={fy:.2f})"
+    )
+
     make_jsonl_chart(
         telemetry_jsonl,
         attr_x="qpos.0", attr_y="qpos.1",
