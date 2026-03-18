@@ -19,7 +19,6 @@ sys.path.insert(0, PROJECT_DIR)
 from utils import get_python_executable, make_jsonl_chart
 
 SDK_PATH    = os.path.join(PROJECT_DIR, "src", "unitree_sdk2_python")
-SCENE_PATH  = os.path.join(PROJECT_DIR, "resources", "scene_rail_track.xml")
 OUTPUT_DIR  = os.environ.get("ARTEFACTS_SCENARIO_UPLOAD_DIR", os.path.join(PROJECT_DIR, "output"))
 ENV         = {**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONPATH": SDK_PATH}
 
@@ -36,14 +35,16 @@ def test_rails_climb():
     front_mp4       = os.path.join(OUTPUT_DIR, "front.mp4")
     telemetry_jsonl = os.path.join(OUTPUT_DIR, "telemetry.jsonl")
 
+    scene          = os.environ.get("scene",          "scene_rail_track.xml")
     v_forward      = os.environ.get("v_forward",      "0.4")
     v_lateral      = os.environ.get("v_lateral",      "0.0")
     rotation_speed = os.environ.get("rotation_speed", "2.5")
+    scene_path     = os.path.join(PROJECT_DIR, "resources", scene)
 
     result = subprocess.run(
         [get_python_executable(), "-u", "go2_wtw_demo.py",
          "--headless", "--cycles", "1",
-         "--scene",          SCENE_PATH,
+         "--scene",          scene_path,
          "--record",         spectator_mp4,
          "--record-front",   front_mp4,
          "--telemetry",      telemetry_jsonl,
