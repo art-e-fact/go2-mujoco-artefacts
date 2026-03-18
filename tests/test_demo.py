@@ -52,7 +52,7 @@ def test_rails_climb():
            "--v-lateral",      v_lateral,
            "--rotation-speed", rotation_speed]
     if headless:
-        cmd.insert(2, "--headless")
+        cmd.append("--headless")
 
     result = subprocess.run(
         cmd,
