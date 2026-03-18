@@ -36,21 +36,26 @@ def test_rails_climb():
     telemetry_jsonl = os.path.join(OUTPUT_DIR, "telemetry.jsonl")
 
     scene          = os.environ.get("scene",          "scene_rail_track.xml")
+    headless       = os.environ.get("headless",       "1") != "0"
     v_forward      = os.environ.get("v_forward",      "0.4")
     v_lateral      = os.environ.get("v_lateral",      "0.0")
     rotation_speed = os.environ.get("rotation_speed", "2.5")
     scene_path     = os.path.join(PROJECT_DIR, "resources", scene)
 
+    cmd = [get_python_executable(), "-u", "go2_wtw_demo.py",
+           "--cycles", "1",
+           "--scene",          scene_path,
+           "--record",         spectator_mp4,
+           "--record-front",   front_mp4,
+           "--telemetry",      telemetry_jsonl,
+           "--v-forward",      v_forward,
+           "--v-lateral",      v_lateral,
+           "--rotation-speed", rotation_speed]
+    if headless:
+        cmd.insert(2, "--headless")
+
     result = subprocess.run(
-        [get_python_executable(), "-u", "go2_wtw_demo.py",
-         "--headless", "--cycles", "1",
-         "--scene",          scene_path,
-         "--record",         spectator_mp4,
-         "--record-front",   front_mp4,
-         "--telemetry",      telemetry_jsonl,
-         "--v-forward",      v_forward,
-         "--v-lateral",      v_lateral,
-         "--rotation-speed", rotation_speed],
+        cmd,
         cwd=PROJECT_DIR,
         capture_output=True, text=True,
         timeout=120,
