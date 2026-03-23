@@ -1,5 +1,5 @@
 #!/bin/sh
-# Comment to following:
+# Comment the following in the unitree setup.py:
 #       install_requires=[
 #             # "cyclonedds==0.10.2",
 #             # "numpy",
