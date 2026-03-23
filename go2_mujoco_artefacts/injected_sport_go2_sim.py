@@ -13,11 +13,10 @@ import mujoco.viewer
 import numpy as np
 import rerun as rr
 
-from go2_mujoco_artefacts.camera_utils import camera_images
-from go2_mujoco_artefacts.mesh_utils import mujoco_mesh_view_to_rerun
-from go2_mujoco_artefacts.sensor_utils import log_all_sensors_to_rerun
-
 from . import defaults
+from .camera_utils import camera_images
+from .mesh_utils import mujoco_mesh_view_to_rerun
+from .sensor_utils import log_all_sensors_to_rerun
 from .simple_sport_go2_sim import Simulation
 
 logger = logging.getLogger()
@@ -40,6 +39,9 @@ class InjectedSimulation(Simulation):
         self.sim_sub: afor.BaseSub[Self] = afor.BaseSub()
         self.time_sub: afor.BaseSub[float] = afor.BaseSub()
 
+    def get_time(self) -> int:
+        return int(self.data.time * 1e9)
+
     def step(self):
         """We add async subscribers to the sim, at each step we put something
         into the sub. Aside from afor.sub we can also use an asyncio.Queue to
@@ -59,6 +61,7 @@ class InjectedSimulation(Simulation):
 
 
 def log_tf(sim: InjectedSimulation):
+    """Logs the tf of every objext in mujoco"""
     mj_model: mujoco.MjModel = sim.model
     mj_data: mujoco.MjData = sim.data
     for i in range(mj_model.nbody):
@@ -81,9 +84,7 @@ def log_tf(sim: InjectedSimulation):
 
 
 def load_mesh(sim: InjectedSimulation):
-    #     print(
-    #         "\n\n /!\\ \n Start rerun FIRST using: `pixi run rerun ./rerun_template.rbl` \n Then restart this sim to see the data live. \n The archive `data.rrd` cannot be opened for some reasons. \n /!\\ \n\n"
-    #     )
+    """Loads all the meshes of mujoco in rerun."""
     logger.debug("loading mesh")
     for id in range(sim.model.ngeom):
         body_id = sim.model.geom_bodyid[id]
@@ -134,6 +135,7 @@ def load_mesh(sim: InjectedSimulation):
 
 
 def log_sensors(sim: InjectedSimulation):
+    """Logs all the sensors of mujoco in rerun."""
     mj_model: mujoco.MjModel = sim.model
     mj_data: mujoco.MjData = sim.data
     log_all_sensors_to_rerun(mj_model, mj_data)
@@ -170,13 +172,17 @@ async def run_viewport(sim: InjectedSimulation):
 
 
 async def record_cameras(sim: InjectedSimulation):
+    """Continuously logs every camera in the sim to rerun.
+
+    async to execute at 10Hz, and not at every sim step.
+    """
     model: mujoco.MjModel = sim.model
     data: mujoco.MjData = sim.data
     renderer = mujoco.Renderer(model, height=500, width=700)
 
     # This executes at 10Hz, or simulation rate, which ever is slower
     next_tick = sim.sim_sub.wait_for_new()
-    async for _ in afor.Rate(10).listen():
+    async for _ in afor.Rate(10, time_source=sim.get_time).listen():
         await next_tick
         next_tick = sim.sim_sub.wait_for_new()
 
@@ -185,9 +191,20 @@ async def record_cameras(sim: InjectedSimulation):
             rr.log(f"cam/{name}", image)
 
 
-async def controller(target: complex, sim: InjectedSimulation):
+async def go_to_abs_pos_controller(target: complex, sim: InjectedSimulation):
+    """Moves the robot to a target position then returns."""
     logger.info(f"Going to {target}")
-    async for _ in afor.Rate(10).listen():
+    rr.log(
+        "tf/world/target",
+        rr.Transform3D(translation=[target.real, target.imag, 0.5]),
+        rr.Cylinders3D(
+            radii=0.6/2,
+            lengths=1,
+            colors=[0, 255, 0, 50],
+            fill_mode=rr.components.FillMode.Solid,
+        ),
+    )
+    async for _ in afor.Rate(10, time_source=sim.get_time).listen():
         pos_vec = sim.data.body("base_link").xpos
         x_dir = sim.data.body("base_link").xmat[[0, 3, 6]]
         rr.log("cmd/mat", rr.Scalars(sim.data.body("base_link").xmat))
@@ -214,9 +231,19 @@ async def controller(target: complex, sim: InjectedSimulation):
 
         speed_cmd = np.clip(dist, -1, 1) / 2
 
-        if dist <= 0.4:
+        if dist <= 0.6:
             logger.info(f"Target {target} reached")
             sim.server._handle_move(json.dumps({"x": 0, "y": 0, "z": 0}))
+            rr.log(
+                "tf/world/target",
+                rr.Transform3D(translation=[target.real, target.imag, 0.5]),
+                rr.Cylinders3D(
+                    radii=0.1,
+                    lengths=1,
+                    colors=[0, 255, 0, 0],
+                    fill_mode=rr.components.FillMode.Solid,
+                ),
+            )
             return
 
         sim.server._handle_move(
@@ -231,16 +258,25 @@ async def controller(target: complex, sim: InjectedSimulation):
 
 
 async def task(sim: InjectedSimulation):
+    """Kinda state machine"""
+    logger.debug("Started Task")
     await sim.sim_sub.wait_for_value()
     await asyncio.sleep(5)
-    await controller(1 - 1j, sim)
-    await controller(1 + 1.7j, sim)
-    await controller(-0.5 + 1.7j, sim)
-    await controller(2 + 1.7j, sim)
-    await controller(0 + 0.0j, sim)
-    await asyncio.sleep(1)
-    sim.server._handle_stand_down(json.dumps({}))
-    await asyncio.sleep(5)
+
+    await go_to_abs_pos_controller(1 - 1j, sim)
+    await go_to_abs_pos_controller(1 + 1.7j, sim)
+    await go_to_abs_pos_controller(1 - 1j, sim)
+
+    await go_to_abs_pos_controller(-0.5 - 1.0j, sim)
+    await go_to_abs_pos_controller(-0.5 + 1.7j, sim)
+    await go_to_abs_pos_controller(-0.5 - 1.0j, sim)
+
+    await go_to_abs_pos_controller(2 - 1.0j, sim)
+    await go_to_abs_pos_controller(2 + 3j, sim)
+    await go_to_abs_pos_controller(2 - 1.0j, sim)
+
+    await go_to_abs_pos_controller(0 + 0.0j, sim)
+    logger.debug("Task done")
     quit()
 
 

@@ -40,7 +40,7 @@ pixi run rerun
 ## Run
 
 ```bash
-pixi run python ./go2_wtw_async.py
+pixi run sim
 ```
 
 ### Run test with artefacts
