@@ -6,6 +6,7 @@ platforms = ["linux-64"]
 version = "0.1.0"
 
 [tasks]
+sim = "python -m go2_mujoco_artefacts.injected_sport_go2_sim"
 
 [dependencies]
 mujoco = ">=3.6.0,<4"
@@ -27,6 +28,7 @@ assimp = ">=6.0.4,<7"
 [pypi-dependencies]
 artefacts-cli = ">=0.15.0, <0.16"
 cyclonedds-nightly = ">=2026.3.5, <2027"
+go2_mujoco_artefacts = {path=".", editable=true}
 unitree_sdk2py = {path="/home/elian/debug/go2-mujoco-artefacts/src/unitree_sdk2_python", editable=false}
 asyncio-for-robotics = ">=1.3.5, <2"
 

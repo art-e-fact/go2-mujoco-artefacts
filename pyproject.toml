@@ -1,0 +1,24 @@
+[project]
+name = "go2_mujoco_artefacts"
+version = "0.1.0"
+description = ""
+readme = "README.md"
+# license = "" # TODO
+authors = [
+  { name = "Elian NEPPEL", email = "elian.dev@posteo.com" }
+]
+requires-python = ">=3.11,<3.14"
+
+dependencies = [
+# TODO
+]
+
+[build-system]
+requires = ["setuptools >= 58.2.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["go2_mujoco_artefacts", "go2_mujoco_artefacts.*"]
+
+[tool.setuptools.package-data]
+"asyncio_gazebo" = ["py.typed"]
