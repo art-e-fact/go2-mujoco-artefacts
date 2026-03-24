@@ -1,5 +1,5 @@
 #!/bin/sh
-# Comment to following:
+# Comment the following in the unitree setup.py:
 #       install_requires=[
 #             # "cyclonedds==0.10.2",
 #             # "numpy",
@@ -41,4 +41,4 @@ BEGIN {
 mv "$tmp" "$file"
 
 # bruh, typo in the __init__.py is unitree a million dollar company???
-mv "$SCRIPT_DIR/./fix__init__.py" "$SCRIPT_DIR/./../src/unitree_sdk2_python/unitree_sdk2py/__init__.py"
+mv "$SCRIPT_DIR/./__init__.py" "$SCRIPT_DIR/./../src/unitree_sdk2_python/unitree_sdk2py/__init__.py"
