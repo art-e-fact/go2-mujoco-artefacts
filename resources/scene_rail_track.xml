@@ -34,7 +34,7 @@
     <geom name="rails3"  type="mesh" mesh="rails"  material="mat_rails"  pos="-4.03 1.5 0.07"/>
     <geom name="gravel3" type="mesh" mesh="gravel" material="mat_gravel" pos="-3.9 1.5 0.04"/>
     <!-- External spectator camera: side-elevated view -->
-    <camera name="right" pos="1 -2 1.0" xyaxes="1 0 0 0 0.447 0.894"/>
-    <camera name="bird_eye" pos="0.8 1.5 5" xyaxes="1 0 0 0 1 0"/>
+    <!-- <camera name="right" pos="1 -2 1.0" xyaxes="1 0 0 0 0.447 0.894"/> -->
+    <!-- <camera name="bird_eye" pos="0.8 1.5 5" xyaxes="1 0 0 0 1 0"/> -->
   </worldbody>
 </mujoco>

@@ -33,8 +33,8 @@ unitree_sdk2py = {path="/home/elian/debug/go2-mujoco-artefacts/src/unitree_sdk2_
 asyncio-for-robotics = ">=1.3.5, <2"
 
 [environments]
-default = ["cpu"]
-gpu = ["gpu"]
+default = ["gpu"]
+cpu = ["cpu"]
 
 [feature.gpu.system-requirements]
 cuda = "13.0" # change this depending on your nvidia-smi
@@ -47,3 +47,4 @@ pytorch-cpu = ">=2.10.0,<3"
 
 [activation.env]
 CYCLONEDDS_URI="./dds_config.xml"
+# RUST_LOG="debug"

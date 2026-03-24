@@ -4,7 +4,9 @@ import json
 import logging
 import time
 from contextlib import suppress
+from datetime import timedelta
 from pathlib import Path
+from subprocess import Popen
 from typing import Any, AsyncIterable, Callable, Self
 
 import asyncio_for_robotics as afor
@@ -13,7 +15,7 @@ import mujoco.viewer
 import numpy as np
 import rerun as rr
 
-from . import defaults
+from . import defaults, proc_utils
 from .camera_utils import camera_images
 from .mesh_utils import mujoco_mesh_view_to_rerun
 from .sensor_utils import log_all_sensors_to_rerun
@@ -70,8 +72,10 @@ def log_tf(sim: InjectedSimulation):
         pos = mj_data.xpos[i]  # world position of body frame
         xmat = mj_data.xmat[i]  # world orientation matrix, flattened 3x3
         # print(frame, pos, xmat)
+        if frame == "world":
+            continue
         rr.log(
-            (f"/tf/{parent}/{frame}" if frame != "world" else "/tf/world"),
+            (f"/tf/{parent}/{frame}"),
             rr.Transform3D(
                 translation=pos,
                 mat3x3=xmat,
@@ -198,7 +202,7 @@ async def go_to_abs_pos_controller(target: complex, sim: InjectedSimulation):
         "tf/world/target",
         rr.Transform3D(translation=[target.real, target.imag, 0.5]),
         rr.Cylinders3D(
-            radii=0.6/2,
+            radii=0.6 / 2,
             lengths=1,
             colors=[0, 255, 0, 50],
             fill_mode=rr.components.FillMode.Solid,
@@ -279,13 +283,33 @@ async def task(sim: InjectedSimulation):
     logger.debug("Task done")
     quit()
 
+async def rerun_flush_periodic():
+    async for _ in afor.Rate(2).listen():
+        rr.get_data_recording().flush()
 
-def setup_rerun():
-    rr.init("newton-dls")
-    rr.save("data.rrd")
-    rr.connect_grpc()
+
+async def setup_rerun():
+    # Equivalent to rr.serve_grpc but works with multiple sinks
+    proc = Popen(
+        ["rerun", "--serve-grpc", "--newest-first", "--server-memory-limit", "100MB"],
+        start_new_session=True,
+    )
+    proc_utils.register_cleanup(proc)
+    uri = "rerun+http://127.0.0.1:9876/proxy"
+    time.sleep(1)
+
+    rr.init("art_go2")
+
+    # sends to server and to disk
+    rr.set_sinks(
+        rr.GrpcSink(uri),
+        rr.FileSink("data.rrd"),
+    )
+
     rr.set_time("sim_time", duration=0)
     rr.set_time("sim_step", sequence=0)
+    logger.warning(rr.ChunkBatcherConfig.DEFAULT())
+    logger.warning(rr.ChunkBatcherConfig.LOW_LATENCY())
     rr.log(
         "cmd/orix",
         rr.Arrows2D(origins=[0, 0], vectors=[1, 0], colors=[255, 0, 0]),
@@ -300,16 +324,17 @@ def setup_rerun():
 
 
 async def setup_and_start(sim: InjectedSimulation):
-    setup_rerun()
+    await setup_rerun()
     load_mesh(sim)
 
     async with asyncio.TaskGroup() as tg:
         tg.create_task(run_viewport(sim))
         tg.create_task(record_cameras(sim))
         tg.create_task(task(sim))
+        tg.create_task(rerun_flush_periodic())
 
         await arun(
-            sim, sim_blocking_callback, afor.Rate(1 / defaults.SIMULATE_DT).listen()
+            sim, sim_blocking_callback, afor.Rate(10*1 / defaults.SIMULATE_DT).listen()
         )
         for t in tg._tasks:
             t.cancel()
@@ -352,6 +377,7 @@ if __name__ == "__main__":
     with suppress(KeyboardInterrupt):
         asyncio.run(main())
     try:
-        rr.get_data_recording().flush()
+        rr.get_data_recording().flush(timeout_sec=2)
     except:
         pass
+    rr.rerun_shutdown()

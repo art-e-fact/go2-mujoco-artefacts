@@ -248,7 +248,6 @@ class SportMuJoCoServer(Server):
                 if any(abs(v) > 1e-6 for v in (vx, vy, vyaw))
                 else State.STANDING
             )
-        print(f"[sport_mujoco] Move vx={vx:.2f} vy={vy:.2f} vyaw={vyaw:.2f}")
         return 0, ""
 
     def _handle_stop_move(self, _parameter: str):

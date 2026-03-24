@@ -1,6 +1,8 @@
+import ctypes
 import logging
 import os
 import signal
+import atexit
 import subprocess
 import time
 from contextlib import contextmanager
@@ -9,6 +11,33 @@ from typing import Any, List
 import psutil
 
 logger = logging.getLogger(__name__)
+
+def register_cleanup(proc: subprocess.Popen):
+
+    def _cleanup() -> None:
+        if proc.poll() is None:
+            try:
+                os.killpg(proc.pid, signal.SIGTERM)
+            except ProcessLookupError: 
+                pass
+            try:
+                proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                os.killpg(proc.pid, signal.SIGKILL)
+
+    atexit.register(_cleanup)
+
+def _set_pdeathsig(sig=signal.SIGTERM) -> None:
+    libc = ctypes.CDLL("libc.so.6", use_errno=True)
+    PR_SET_PDEATHSIG = 1
+
+    if libc.prctl(PR_SET_PDEATHSIG, sig) != 0:
+        err = ctypes.get_errno()
+        raise OSError(err, os.strerror(err))
+
+    # Optional race check: parent may already be gone before prctl runs.
+    if os.getppid() == 1:
+        os.kill(os.getpid(), sig)
 
 
 @contextmanager

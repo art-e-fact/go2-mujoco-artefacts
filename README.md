@@ -29,20 +29,32 @@ bash ./scripts/fix_unitree_sdk2_for_pixi.sh
 pixi install
 ```
 
-## Visualize (Rerun)
-
-The archive is bugged, so you have to launch rerun first.
-
-```bash
-pixi run rerun
-```
-
-The rerun template is available at `./rerun_template.rbl`
+The rerun template is available at `./rerun_template.rbl`. But I am not very sure it works well.
 
 ## Run
 
 ```bash
 pixi run sim
+```
+
+## Visualize
+
+### Live
+
+```bash
+pixi run rerun
+```
+
+If you started the sim before rerun use:
+
+```bash
+pixi run rerun --connect rerun+http://127.0.0.1:9876/proxy
+```
+
+### Archive
+
+```bash
+pixi run rerun data.rrd
 ```
 
 ## Atributions
