@@ -41,6 +41,30 @@ def _make_jis60kg() -> RailSpec:
 JIS_60KG = _make_jis60kg()
 
 
+# --- Geometry helpers ---
+
+
+def _obb_overlap_2d(cx1, cy1, a1, cx2, cy2, a2, hx, hy):
+    """Check if two 2D oriented boxes overlap using the Separating Axis Theorem.
+
+    Both boxes share the same half-extents (*hx*, *hy*).
+    """
+    cos1, sin1 = math.cos(a1), math.sin(a1)
+    cos2, sin2 = math.cos(a2), math.sin(a2)
+    # The 4 separating axes: 2 edge normals per box
+    axes = [(cos1, sin1), (-sin1, cos1), (cos2, sin2), (-sin2, cos2)]
+    dx, dy = cx2 - cx1, cy2 - cy1
+    for ax, ay in axes:
+        # Project the center-to-center vector onto the axis
+        d = abs(ax * dx + ay * dy)
+        # Sum of half-extent projections for both boxes
+        r1 = hx * abs(ax * cos1 + ay * sin1) + hy * abs(-ax * sin1 + ay * cos1)
+        r2 = hx * abs(ax * cos2 + ay * sin2) + hy * abs(-ax * sin2 + ay * cos2)
+        if d > r1 + r2:
+            return False  # separating axis found
+    return True  # no separating axis → overlap
+
+
 # --- Network ---
 
 
@@ -54,11 +78,21 @@ class RailNetwork:
     Attributes:
         spec: Rail cross-section specification.
         roads: List of roads, each a list of ``(x, y, heading_deg)`` tuples.
+        sleeper_spacing: Distance between sleepers along the track (m).
+        sleeper_size: Sleeper dimensions as ``(length, width, height)`` in meters.
     """
 
-    def __init__(self, spec: RailSpec = JIS_60KG, roads: list | None = None):
+    def __init__(
+        self,
+        spec: RailSpec = JIS_60KG,
+        roads: list | None = None,
+        sleeper_spacing: float = 0.6,
+        sleeper_size: tuple[float, float, float] = (0.2, 1.4, 0.1),
+    ):
         self.spec = spec
         self.roads: list[list[tuple[float, float, float]]] = roads or []
+        self.sleeper_spacing = sleeper_spacing
+        self.sleeper_size = sleeper_size
 
     def sample_string(self, si: int, offset: float = 0.0, resolution: float = 0.1):
         """Subsample road *si* at *resolution* spacing with lateral *offset*.
@@ -105,6 +139,64 @@ class RailNetwork:
             )
         return results
 
+    def sample_sleepers(self, rng: np.random.Generator | None = None) -> list[tuple[glm.vec3, glm.quat]]:
+        """Sample sleeper poses across all roads, eliminating overlaps.
+
+        Sleepers from all roads are pooled. Pairs whose oriented bounding
+        boxes overlap are found and one is randomly discarded, repeated
+        until no overlaps remain.
+        """
+        sl, sw, _ = self.sleeper_size
+        hx, hy = sl / 2, sw / 2  # half-extents along local axes
+
+        poses = []
+        for si in range(len(self.roads)):
+            poses.extend(self.sample_string(si, resolution=self.sleeper_spacing))
+        if len(poses) < 2:
+            return poses
+
+        rng = rng or np.random.default_rng()
+
+        # Extract center (x, y) and heading for OBB tests
+        cx = np.array([p.x for p, _ in poses])
+        cy = np.array([p.y for p, _ in poses])
+        angles = np.array([math.atan2(2 * (q.w * q.z + q.x * q.y),
+                                       1 - 2 * (q.y * q.y + q.z * q.z))
+                           for _, q in poses])
+
+        def _find_overlap(cx, cy, angles):
+            """Return index pair (i, j) of first OBB overlap, or None."""
+            n = len(cx)
+            # Quick squared-distance pre-filter (diagonal of box as radius)
+            r = math.hypot(hx, hy)
+            dx = cx[:, None] - cx[None, :]
+            dy = cy[:, None] - cy[None, :]
+            dist2 = dx * dx + dy * dy
+            np.fill_diagonal(dist2, np.inf)
+            candidates = np.argwhere(dist2 < (2 * r) ** 2)
+
+            for idx in range(len(candidates)):
+                i, j = int(candidates[idx, 0]), int(candidates[idx, 1])
+                if i >= j:
+                    continue
+                # 2D SAT with 4 axes (2 edge normals per box)
+                if _obb_overlap_2d(cx[i], cy[i], angles[i],
+                                   cx[j], cy[j], angles[j], hx, hy):
+                    return i, j
+            return None
+
+        while len(poses) >= 2:
+            pair = _find_overlap(cx, cy, angles)
+            if pair is None:
+                break
+            drop = rng.choice(pair)
+            poses.pop(drop)
+            cx = np.delete(cx, drop)
+            cy = np.delete(cy, drop)
+            angles = np.delete(angles, drop)
+
+        return poses
+
 
 @dataclass
 class RailNetworkBuilder:
@@ -125,6 +217,8 @@ class RailNetworkBuilder:
         min_road_length: Minimum road length (m).
         max_road_length: Maximum road length (m).
         rail_spec: Rail specification for the output network.
+        sleeper_spacing: Distance between sleepers along the track (m).
+        sleeper_size: Sleeper dimensions as ``(length, width, height)`` in meters.
     """
 
     step_size: float = 0.1
@@ -137,6 +231,8 @@ class RailNetworkBuilder:
     min_road_length: float = 10.0
     max_road_length: float = 30.0
     rail_spec: RailSpec = field(default_factory=lambda: JIS_60KG)
+    sleeper_spacing: float = 0.6
+    sleeper_size: tuple[float, float, float] = (0.2, 1.4, 0.1)
 
     def _grow_road(self, rng, start, n_steps):
         """Grow a single road from *start* ``(x, y, heading_deg)`` for *n_steps*."""
@@ -200,7 +296,12 @@ class RailNetworkBuilder:
             else:
                 print(f"Warning: could not place road {ri} after {max_trials} trials")
 
-        return RailNetwork(spec=self.rail_spec, roads=roads)
+        return RailNetwork(
+            spec=self.rail_spec,
+            roads=roads,
+            sleeper_spacing=self.sleeper_spacing,
+            sleeper_size=self.sleeper_size,
+        )
 
 
 # --- Mesh ---
@@ -287,6 +388,14 @@ def generate_mujoco_xml(net: RailNetwork, resolution: float = 0.2) -> str:
         specular="0.8",
         shininess="0.9",
     )
+    SubElement(
+        asset,
+        "material",
+        name="mat_sleeper",
+        rgba="0.4 0.28 0.18 1",
+        specular="0.2",
+        shininess="0.1",
+    )
     worldbody = SubElement(root, "worldbody")
     half_g = spec.gauge / 2.0
 
@@ -314,6 +423,24 @@ def generate_mujoco_xml(net: RailNetwork, resolution: float = 0.2) -> str:
                 contype="1",
                 conaffinity="1",
             )
+
+    # Sleepers (deduplicated across all roads)
+    sl, sw, sh = net.sleeper_size
+    for ti, (pos, quat) in enumerate(net.sample_sleepers()):
+        fwd = quat * glm.vec3(1, 0, 0)
+        yaw = math.atan2(float(fwd.y), float(fwd.x))
+        SubElement(
+            worldbody,
+            "geom",
+            name=f"sleeper_{ti}",
+            type="box",
+            size=f"{sl/2:.4f} {sw/2:.4f} {sh/2:.4f}",
+            pos=f"{pos.x:.4f} {pos.y:.4f} {sh/2:.4f}",
+            euler=f"0 0 {math.degrees(yaw):.2f}",
+            material="mat_sleeper",
+            contype="1",
+            conaffinity="1",
+        )
 
     indent(root, space="  ")
     return tostring(root, encoding="unicode")
@@ -349,6 +476,30 @@ def log_network(net: RailNetwork):
                     vertex_colors=[140, 140, 155],
                 ),
             )
+
+    # Sleepers (deduplicated across all roads)
+    sl, sw, sh = net.sleeper_size
+    sleepers = net.sample_sleepers()
+    if sleepers:
+        centers = []
+        half_sizes = []
+        rotations = []
+        for pos, quat in sleepers:
+            fwd = quat * glm.vec3(1, 0, 0)
+            yaw = math.atan2(float(fwd.y), float(fwd.x))
+            centers.append([pos.x, pos.y, sh / 2])
+            half_sizes.append([sl / 2, sw / 2, sh / 2])
+            q = glm.angleAxis(yaw, glm.vec3(0, 0, 1))
+            rotations.append(rr.Quaternion(xyzw=[q.x, q.y, q.z, q.w]))
+        rr.log(
+            "network/sleepers",
+            rr.Boxes3D(
+                centers=centers,
+                half_sizes=half_sizes,
+                colors=[[100, 70, 45]],
+                quaternions=rotations,
+            ),
+        )
 
 
 if __name__ == "__main__":
