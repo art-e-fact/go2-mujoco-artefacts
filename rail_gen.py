@@ -41,6 +41,18 @@ def _make_jis60kg() -> RailSpec:
 JIS_60KG = _make_jis60kg()
 
 
+@dataclass
+class TerrainSpec:
+    """Configuration for terrain heightfield generation."""
+    margin: float = 3.0          # extra extent beyond network bounds (m)
+    resolution: float = 0.1      # grid cell size (m)
+    base_depth: float = 0.4      # depth below rail level (m)
+    slope_width: float = 1.2     # lateral distance of slope from rail to base (m)
+    flat_radius: float = 0.8     # half-width of flat zone around centerline (m)
+    noise_amplitude: float = 0.2 # noise height std-dev (m)
+    noise_scale: int = 20        # coarse grid cells per noise wavelength
+
+
 # --- Geometry helpers ---
 
 
@@ -63,6 +75,21 @@ def _obb_overlap_2d(cx1, cy1, a1, cx2, cy2, a2, hx, hy):
         if d > r1 + r2:
             return False  # separating axis found
     return True  # no separating axis → overlap
+
+
+def _smooth_noise_2d(nrow, ncol, scale, rng):
+    """Bilinear-interpolated smooth random noise with unit variance."""
+    cr, cc = max(2, nrow // scale + 2), max(2, ncol // scale + 2)
+    coarse = rng.standard_normal((cr, cc))
+    ys, xs = np.linspace(0, cr - 1, nrow), np.linspace(0, cc - 1, ncol)
+    xg, yg = np.meshgrid(xs, ys)
+    x0 = np.clip(xg.astype(int), 0, cc - 2)
+    y0 = np.clip(yg.astype(int), 0, cr - 2)
+    fx, fy = xg - x0, yg - y0
+    return (coarse[y0, x0] * (1 - fx) * (1 - fy) +
+            coarse[y0, x0 + 1] * fx * (1 - fy) +
+            coarse[y0 + 1, x0] * (1 - fx) * fy +
+            coarse[y0 + 1, x0 + 1] * fx * fy)
 
 
 # --- Network ---
@@ -197,6 +224,35 @@ class RailNetwork:
 
         return poses
 
+    def generate_terrain(self, spec: TerrainSpec, rng: np.random.Generator | None = None):
+        """Generate terrain elevation grid: flat under rails, sloping to base depth."""
+        all_pts = np.vstack([np.array([(x, y) for x, y, _ in r]) for r in self.roads])
+        xmin, ymin = all_pts.min(axis=0) - spec.margin
+        xmax, ymax = all_pts.max(axis=0) + spec.margin
+        nrow = int(math.ceil((ymax - ymin) / spec.resolution)) + 1
+        ncol = int(math.ceil((xmax - xmin) / spec.resolution)) + 1
+        xs = np.linspace(xmin, xmax, ncol)
+        ys = np.linspace(ymin, ymax, nrow)
+        gx, gy = np.meshgrid(xs, ys)
+
+        # Min distance to any road centerline (per row for memory efficiency)
+        dist = np.empty((nrow, ncol))
+        for r in range(nrow):
+            row_xy = np.column_stack([gx[r], gy[r]])
+            d2 = ((row_xy[:, None, :] - all_pts[None, :, :]) ** 2).sum(axis=2)
+            dist[r] = np.sqrt(d2.min(axis=1))
+
+        # Smoothstep profile: flat near rails → slope → base
+        t = np.clip((dist - spec.flat_radius) / spec.slope_width, 0, 1)
+        t = t * t * (3 - 2 * t)
+        elevation = -spec.base_depth * t
+
+        # Add noise (masked by t so it's zero under the rails)
+        rng = rng or np.random.default_rng()
+        elevation += _smooth_noise_2d(nrow, ncol, spec.noise_scale, rng) * spec.noise_amplitude * t
+
+        return elevation, (xmin, xmax, ymin, ymax)
+
 
 @dataclass
 class RailNetworkBuilder:
@@ -296,6 +352,12 @@ class RailNetworkBuilder:
             else:
                 print(f"Warning: could not place road {ri} after {max_trials} trials")
 
+        # Center the network at the origin
+        if roads:
+            all_pts = np.vstack([np.array([(x, y) for x, y, _ in r]) for r in roads])
+            center = (all_pts.min(axis=0) + all_pts.max(axis=0)) / 2
+            roads = [[(x - center[0], y - center[1], h) for x, y, h in r] for r in roads]
+
         return RailNetwork(
             spec=self.rail_spec,
             roads=roads,
@@ -375,8 +437,8 @@ def _extrude_profile(profile_mm, samples):
 # --- Output ---
 
 
-def generate_mujoco_xml(net: RailNetwork, resolution: float = 0.2) -> str:
-    """Generate MuJoCo MJCF XML with inline rail meshes."""
+def generate_mujoco_xml(net: RailNetwork, resolution: float = 0.2, terrain: TerrainSpec | None = None) -> str:
+    """Generate MuJoCo MJCF XML with inline rail meshes and optional terrain hfield."""
     spec = net.spec
     root = Element("mujoco", model="rail_network")
     asset = SubElement(root, "asset")
@@ -442,12 +504,37 @@ def generate_mujoco_xml(net: RailNetwork, resolution: float = 0.2) -> str:
             conaffinity="1",
         )
 
+    # Terrain heightfield
+    if terrain is not None:
+        elevation, (xmin, xmax, ymin, ymax) = net.generate_terrain(terrain)
+        nrow, ncol = elevation.shape
+        e_min, e_max = float(elevation.min()), float(elevation.max())
+        e_range = max(e_max - e_min, 1e-6)
+        rx, ry = (xmax - xmin) / 2, (ymax - ymin) / 2
+        cx, cy = (xmin + xmax) / 2, (ymin + ymax) / 2
+        SubElement(
+            asset, "material", name="mat_terrain",
+            rgba="0.45 0.38 0.28 1", specular="0.1", shininess="0.1",
+        )
+        SubElement(
+            asset, "hfield", name="terrain",
+            nrow=str(nrow), ncol=str(ncol),
+            size=f"{rx:.4f} {ry:.4f} {e_range:.4f} 0.1",
+            elevation=" ".join(f"{v:.4f}" for v in elevation[::-1].ravel()),
+        )
+        SubElement(
+            worldbody, "geom", name="terrain",
+            type="hfield", hfield="terrain",
+            pos=f"{cx:.4f} {cy:.4f} {e_min:.4f}",
+            material="mat_terrain", contype="1", conaffinity="1",
+        )
+
     indent(root, space="  ")
     return tostring(root, encoding="unicode")
 
 
-def log_network(net: RailNetwork):
-    """Log the rail network to Rerun: centerlines and extruded meshes."""
+def log_network(net: RailNetwork, terrain: TerrainSpec | None = None):
+    """Log the rail network to Rerun: centerlines, meshes, and optional terrain."""
     import rerun as rr
 
     spec = net.spec
@@ -498,6 +585,28 @@ def log_network(net: RailNetwork):
                 half_sizes=half_sizes,
                 colors=[[100, 70, 45]],
                 quaternions=rotations,
+                fill_mode="solid",
+            ),
+        )
+
+    # Terrain mesh
+    if terrain is not None:
+        elevation, (xmin, xmax, ymin, ymax) = net.generate_terrain(terrain)
+        nrow, ncol = elevation.shape
+        xs = np.linspace(xmin, xmax, ncol)
+        ys = np.linspace(ymin, ymax, nrow)
+        gx, gy = np.meshgrid(xs, ys)
+        verts = np.column_stack([gx.ravel(), gy.ravel(), elevation.ravel()])
+        i = (np.arange(nrow - 1)[:, None] * ncol + np.arange(ncol - 1)[None, :]).ravel()
+        faces = np.vstack([np.column_stack([i, i + ncol, i + 1]),
+                           np.column_stack([i + 1, i + ncol, i + ncol + 1])])
+        rr.log(
+            "network/terrain",
+            rr.Mesh3D(
+                vertex_positions=verts,
+                triangle_indices=faces,
+                vertex_normals=_compute_vertex_normals(verts, faces),
+                vertex_colors=[120, 100, 80],
             ),
         )
 
@@ -509,5 +618,6 @@ if __name__ == "__main__":
     rr.init("rail_network", spawn=True)
     builder = RailNetworkBuilder()
     net = builder.build(rng, n_roads=5)
+    terrain = TerrainSpec()
     print(f"Roads: {len(net.roads)}, points: {sum(len(r) for r in net.roads)}")
-    log_network(net)
+    log_network(net, terrain=terrain)
