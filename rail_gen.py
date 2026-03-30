@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 import math
+import os
 import numpy as np
 from pyglm import glm
 from xml.etree.ElementTree import Element, SubElement, tostring, indent
@@ -27,14 +28,14 @@ def _make_jis60kg() -> RailSpec:
         name="JIS 60kg N",
         gauge=1.067,
         profile=[
-            (-B/2,   0),       ( B/2,   0),        # base bottom
-            ( B/2,   F*0.3),   ( G/2+8, F),        # foot right taper
-            ( G/2,   F),       ( G/2,   F+E),      # web right
-            ( C/2,   F+E),     ( C/2,   A),        # head right
-            (-C/2,   A),       (-C/2,   F+E),      # head left
-            (-G/2,   F+E),     (-G/2,   F),        # web left
-            (-G/2-8, F),       (-B/2,   F*0.3),    # foot left taper
-        ],
+            (-B/2,   0),       (-B/2,   F*0.3),    # left base up
+            (-G/2-8, F),       (-G/2,   F),        # left foot taper
+            (-G/2,   F+E),     (-C/2,   F+E),      # left web & head
+            (-C/2,   A),       ( C/2,   A),        # head top
+            ( C/2,   F+E),     ( G/2,   F+E),      # right head & web
+            ( G/2,   F),       ( G/2+8, F),        # right foot taper
+            ( B/2,   F*0.3),   ( B/2,   0),        # right base down
+        ],  # closed: (B/2,0) → (-B/2,0) = base bottom
     )  # fmt: skip
 
 
@@ -288,7 +289,7 @@ class RailNetworkBuilder:
     max_road_length: float = 30.0
     rail_spec: RailSpec = field(default_factory=lambda: JIS_60KG)
     sleeper_spacing: float = 0.6
-    sleeper_size: tuple[float, float, float] = (0.2, 1.4, 0.1)
+    sleeper_size: tuple[float, float, float] = (0.2, 1.4, 0.01  )
 
     def _grow_road(self, rng, start, n_steps):
         """Grow a single road from *start* ``(x, y, heading_deg)`` for *n_steps*."""
@@ -394,7 +395,7 @@ def _compute_vertex_normals(verts, faces):
     return normals / np.where(lens < 1e-12, 1.0, lens)
 
 
-def _extrude_profile(profile_mm, samples):
+def _extrude_profile(profile_mm, samples, z_offset: float = 0.0):
     """Extrude a 2D cross-section along sampled curve frames."""
     n_prof = len(profile_mm)
     n_samp = len(samples)
@@ -404,7 +405,7 @@ def _extrude_profile(profile_mm, samples):
     for si, (pos, quat) in enumerate(samples):
         left = quat * glm.vec3(0, 1, 0)
         for pi, (px, py) in enumerate(profile):
-            v = pos + float(px) * left + float(py) * glm.vec3(0, 0, 1)
+            v = pos + float(px) * left + float(py + z_offset) * glm.vec3(0, 0, 1)
             verts[si * n_prof + pi] = [v.x, v.y, v.z]
 
     faces = []
@@ -414,21 +415,6 @@ def _extrude_profile(profile_mm, samples):
             a, b = si * n_prof + pi, si * n_prof + pn
             c, d = (si + 1) * n_prof + pn, (si + 1) * n_prof + pi
             faces.extend([[a, d, c], [a, c, b]])
-
-    for ring_start, winding in [(0, -1), ((n_samp - 1) * n_prof, 1)]:
-        ci = len(verts)
-        verts = np.vstack(
-            [
-                verts,
-                np.mean(verts[ring_start : ring_start + n_prof], axis=0, keepdims=True),
-            ]
-        )
-        for pi in range(n_prof):
-            pn = (pi + 1) % n_prof
-            if winding < 0:
-                faces.append([ci, ring_start + pn, ring_start + pi])
-            else:
-                faces.append([ci, ring_start + pi, ring_start + pn])
 
     faces = np.array(faces, dtype=int)
     return MeshData(verts, faces, _compute_vertex_normals(verts, faces))
@@ -460,13 +446,15 @@ def generate_mujoco_xml(net: RailNetwork, resolution: float = 0.2, terrain: Terr
     )
     worldbody = SubElement(root, "worldbody")
     half_g = spec.gauge / 2.0
+    _sl, _sw, sh = net.sleeper_size
+    rail_z = sh / 2  # rails start at top of (half-buried) sleepers
 
     for si in range(len(net.roads)):
         for tag, off in [("L", half_g), ("R", -half_g)]:
             samples = net.sample_string(si, offset=off, resolution=resolution)
             if len(samples) < 2:
                 continue
-            mesh = _extrude_profile(spec.profile, samples)
+            mesh = _extrude_profile(spec.profile, samples, z_offset=rail_z)
             name = f"rail_s{si}_{tag}"
             SubElement(
                 asset,
@@ -486,8 +474,8 @@ def generate_mujoco_xml(net: RailNetwork, resolution: float = 0.2, terrain: Terr
                 conaffinity="1",
             )
 
-    # Sleepers (deduplicated across all roads)
-    sl, sw, sh = net.sleeper_size
+    # Sleepers (deduplicated across all roads) — sunk halfway into ground
+    sl, sw, _sh = net.sleeper_size
     for ti, (pos, quat) in enumerate(net.sample_sleepers()):
         fwd = quat * glm.vec3(1, 0, 0)
         yaw = math.atan2(float(fwd.y), float(fwd.x))
@@ -497,11 +485,11 @@ def generate_mujoco_xml(net: RailNetwork, resolution: float = 0.2, terrain: Terr
             name=f"sleeper_{ti}",
             type="box",
             size=f"{sl/2:.4f} {sw/2:.4f} {sh/2:.4f}",
-            pos=f"{pos.x:.4f} {pos.y:.4f} {sh/2:.4f}",
-            euler=f"0 0 {math.degrees(yaw):.2f}",
+            pos=f"{pos.x:.4f} {pos.y:.4f} {0:.4f}",
+            euler=f"0 0 {yaw:.6f}",
             material="mat_sleeper",
-            contype="1",
-            conaffinity="1",
+            contype="0",
+            conaffinity="0",
         )
 
     # Terrain heightfield
@@ -539,6 +527,7 @@ def log_network(net: RailNetwork, terrain: TerrainSpec | None = None):
 
     spec = net.spec
     half_g = spec.gauge / 2.0
+    sl, sw, sh = net.sleeper_size
 
     for si in range(len(net.roads)):
         samples = net.sample_string(si, resolution=0.2)
@@ -553,7 +542,7 @@ def log_network(net: RailNetwork, terrain: TerrainSpec | None = None):
             samples = net.sample_string(si, offset=off, resolution=0.2)
             if len(samples) < 2:
                 continue
-            mesh = _extrude_profile(spec.profile, samples)
+            mesh = _extrude_profile(spec.profile, samples, z_offset=sh / 2)
             rr.log(
                 f"network/{si}/mesh_{tag}",
                 rr.Mesh3D(
@@ -564,8 +553,7 @@ def log_network(net: RailNetwork, terrain: TerrainSpec | None = None):
                 ),
             )
 
-    # Sleepers (deduplicated across all roads)
-    sl, sw, sh = net.sleeper_size
+    # Sleepers (deduplicated across all roads) — sunk halfway into ground
     sleepers = net.sample_sleepers()
     if sleepers:
         centers = []
@@ -574,7 +562,7 @@ def log_network(net: RailNetwork, terrain: TerrainSpec | None = None):
         for pos, quat in sleepers:
             fwd = quat * glm.vec3(1, 0, 0)
             yaw = math.atan2(float(fwd.y), float(fwd.x))
-            centers.append([pos.x, pos.y, sh / 2])
+            centers.append([pos.x, pos.y, 0.0])
             half_sizes.append([sl / 2, sw / 2, sh / 2])
             q = glm.angleAxis(yaw, glm.vec3(0, 0, 1))
             rotations.append(rr.Quaternion(xyzw=[q.x, q.y, q.z, q.w]))
@@ -609,6 +597,116 @@ def log_network(net: RailNetwork, terrain: TerrainSpec | None = None):
                 vertex_colors=[120, 100, 80],
             ),
         )
+
+
+class RailwayScene:
+    """A complete rail scene: network + terrain, with MuJoCo and Rerun output."""
+
+    def __init__(self, net: RailNetwork, terrain: TerrainSpec | None = None):
+        self.net = net
+        self.terrain = terrain
+
+    _TERRAIN_DEFAULT = object()  # sentinel: distinguish 'not passed' from None
+
+    @classmethod
+    def build(cls, rng: np.random.Generator, n_roads: int = 5,
+              terrain: TerrainSpec | None | object = _TERRAIN_DEFAULT,
+              **builder_kwargs) -> "RailwayScene":
+        if terrain is cls._TERRAIN_DEFAULT:
+            terrain = TerrainSpec()
+        net = RailNetworkBuilder(**builder_kwargs).build(rng, n_roads=n_roads)
+        return cls(net, terrain)
+
+    def log_rerun(self):
+        log_network(self.net, terrain=self.terrain)
+
+    def save_mujoco_scene(self, project_root: str,
+                          start_pos: tuple[float, float, float] | None = None) -> str:
+        """Write a complete MuJoCo scene XML to a temp file and return its path.
+
+        The file includes the Go2 robot, lighting, and all rail/terrain
+        geometry.  The caller is responsible for deleting the file when done.
+
+        Args:
+            project_root: Absolute path to the project root (for go2.xml include).
+            start_pos: Optional (x, y, heading_rad) to place the robot.
+        """
+        import tempfile
+        from xml.etree.ElementTree import parse as ET_parse
+        from io import StringIO
+
+        go2_xml = os.path.join(
+            project_root, "src", "unitree_mujoco", "unitree_robots", "go2", "go2.xml"
+        )
+
+        # Build the base scene (mirroring resources/scene_flat.xml)
+        root = Element("mujoco", model="go2 rail scene")
+        SubElement(root, "include", file=go2_xml)
+        SubElement(root, "statistic", center="0 0 0.1", extent="0.8")
+
+        vis = SubElement(root, "visual")
+        SubElement(vis, "headlight", diffuse="0.6 0.6 0.6",
+                   ambient="0.3 0.3 0.3", specular="0 0 0")
+        SubElement(vis, "rgba", haze="0.15 0.25 0.35 1")
+        SubElement(vis, "global", azimuth="-130", elevation="-20",
+                   offwidth="1280", offheight="720")
+        SubElement(vis, "map", zfar="200")
+
+        asset = SubElement(root, "asset")
+        SubElement(asset, "texture", type="skybox", builtin="gradient",
+                   rgb1="0.3 0.5 0.7", rgb2="0 0 0", width="512", height="3072")
+        SubElement(asset, "texture", type="2d", name="groundplane",
+                   builtin="checker", mark="edge",
+                   rgb1="0.2 0.3 0.4", rgb2="0.1 0.2 0.3",
+                   markrgb="0.8 0.8 0.8", width="300", height="300")
+        SubElement(asset, "material", name="groundplane", texture="groundplane",
+                   texuniform="true", texrepeat="5 5", reflectance="0.2")
+
+        worldbody = SubElement(root, "worldbody")
+        SubElement(worldbody, "light", pos="0 0 1.5", dir="0 0 -1",
+                   directional="true")
+        SubElement(worldbody, "camera", name="spectator",
+                   pos="0 -3 1.5", xyaxes="1 0 0 0 0.447 0.894")
+
+        # Override the robot start position if requested
+        if start_pos is not None:
+            sx, sy, syaw = start_pos
+            cw, sw_ = math.cos(syaw / 2), math.sin(syaw / 2)
+            qpos = (f"{sx} {sy} 0.27 {cw} 0 0 {sw_} "
+                    "0 0.9 -1.8 0 0.9 -1.8 0 0.9 -1.8 0 0.9 -1.8")
+            ctrl = "0 0.9 -1.8 0 0.9 -1.8 0 0.9 -1.8 0 0.9 -1.8"
+            kf = SubElement(root, "keyframe")
+            SubElement(kf, "key", name="rail_start", qpos=qpos, ctrl=ctrl)
+
+        # Human-marker mocap body (visible + collidable for lidar)
+        marker = SubElement(worldbody, "body", name="human_marker", mocap="true")
+        SubElement(marker, "geom", type="cylinder", size="0.2 0.9",
+                   rgba="1.0 0.5 0.0 0.5", contype="0", conaffinity="0")
+
+        # Add a flat floor if no terrain heightfield
+        if self.terrain is None:
+            SubElement(worldbody, "geom", name="floor", type="plane",
+                       size="0 0 0.05", material="groundplane")
+
+        # Merge rail/sleeper/terrain from generate_mujoco_xml()
+        rail_xml = generate_mujoco_xml(self.net, terrain=self.terrain)
+        rail_root = ET_parse(StringIO(rail_xml)).getroot()
+        rail_asset = rail_root.find("asset")
+        rail_wb = rail_root.find("worldbody")
+        if rail_asset is not None:
+            for child in rail_asset:
+                asset.append(child)
+        if rail_wb is not None:
+            for child in rail_wb:
+                worldbody.append(child)
+
+        indent(root, space="  ")
+        xml_str = tostring(root, encoding="unicode")
+
+        fd, path = tempfile.mkstemp(suffix=".xml", prefix="rail_scene_")
+        os.write(fd, xml_str.encode())
+        os.close(fd)
+        return path
 
 
 if __name__ == "__main__":
