@@ -133,6 +133,7 @@ def main():
     parser.add_argument("--target-lead",   type=float, default=1.0,  help="Initial target lead distance (m)")
     parser.add_argument("--terrain",       action="store_true",       help="Enable terrain heightfield (off by default)")
     parser.add_argument("--teleop",        action="store_true",       help="Control robot with gamepad instead of auto")
+    parser.add_argument("--rerun",         action="store_true",       help="Stream data to Rerun viewer")
     args = parser.parse_args()
 
     # --- Generate rail scene ---
@@ -147,6 +148,11 @@ def main():
 
     scene_path = scene.save_mujoco_scene(_HERE, start_pos=start_pos)
     print(f"Saved MuJoCo scene to {scene_path}")
+
+    if args.rerun:
+        import rerun as rr
+        rr.init("go2_rails_demo", spawn=True)
+        scene.log_rerun()
 
     env = {**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONPATH": _SDK_DIR}
     procs = []
@@ -253,6 +259,37 @@ def main():
                     break
             time.sleep(0.05)
 
+        # --- Rerun: heightmap subscriber (polled in the control loop) ---
+        hm_sub = None
+        if args.rerun:
+            from unitree_sdk2py.idl.unitree_go.msg.dds_ import HeightMap_
+            hm_sub = ChannelSubscriber("rt/utlidar/height_map_array", HeightMap_)
+            hm_sub.Init()
+
+        def _poll_heightmap():
+            """Read latest HeightMap_ and log to Rerun. Returns True if logged."""
+            if hm_sub is None:
+                return False
+            msg = hm_sub.Read()
+            if msg is None:
+                return False
+            data = np.array(msg.data, dtype=np.float32)
+            mask = data < 1e8
+            if not mask.any():
+                return False
+            ix = np.arange(len(data)) % msg.width
+            iy = np.arange(len(data)) // msg.width
+            rr.set_time("sim_time", timestamp=msg.stamp)
+            rr.log("heightmap", rr.Points3D(
+                np.column_stack([
+                    msg.origin[0] + ix[mask] * msg.resolution,
+                    msg.origin[1] + iy[mask] * msg.resolution,
+                    data[mask],
+                ]),
+                radii=0.015,
+            ))
+            return True
+
         # --- Control loop ---
         DEADZONE = 0.1
         dt = 0.1
@@ -275,10 +312,8 @@ def main():
 
                 client.Move(vx, vy, vyaw)
                 sleep(dt)
+                _poll_heightmap()
                 step_count += 1
-
-                if step_count % 50 == 0:
-                    print(f"  step {step_count}: vx={vx:.2f} vy={vy:.2f} vyaw={vyaw:.2f}")
         else:
             # --- Auto mode: follow path with UWB-based control ---
             while path_s < path_dists[-1]:
@@ -322,11 +357,8 @@ def main():
 
                 client.Move(vx, vy, vyaw)
                 sleep(dt)
+                _poll_heightmap()
                 step_count += 1
-
-                if step_count % 50 == 0:
-                    print(f"  step {step_count}: target=({tx:.2f}, {ty:.2f}) "
-                          f"lat={lateral_err:+.2f}m hdg={math.degrees(heading_err):+.1f}°")
 
         client.StopMove()
         print(f"\nReached end of road after {step_count} steps.")
