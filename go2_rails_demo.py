@@ -51,39 +51,55 @@ def _build_waypoints(road):
     return [(x, y, math.radians(h)) for x, y, h in road]
 
 
-def _pursuit_step(robot_x, robot_y, robot_yaw, waypoints, lookahead=1.0):
-    """Compute (vx, vyaw) to steer toward the nearest waypoint + lookahead.
+def _build_path(waypoints):
+    """Return cumulative arc-length distances and (x,y) arrays for waypoints."""
+    xs = [w[0] for w in waypoints]
+    ys = [w[1] for w in waypoints]
+    dists = [0.0]
+    for i in range(1, len(xs)):
+        dx = xs[i] - xs[i - 1]
+        dy = ys[i] - ys[i - 1]
+        dists.append(dists[-1] + math.sqrt(dx * dx + dy * dy))
+    return dists, xs, ys
 
-    Returns (vx, vyaw, done). done=True when past the last waypoint.
-    """
-    # Find closest waypoint
-    best_i, best_d2 = 0, float("inf")
-    for i, (wx, wy, _) in enumerate(waypoints):
-        d2 = (wx - robot_x) ** 2 + (wy - robot_y) ** 2
+
+def _sample_path(dists, xs, ys, s):
+    """Interpolate (x, y) at arc-length distance s along the path."""
+    s = max(0.0, min(s, dists[-1]))
+    for i in range(1, len(dists)):
+        if dists[i] >= s:
+            t = (s - dists[i - 1]) / (dists[i] - dists[i - 1]) if dists[i] > dists[i - 1] else 0.0
+            return xs[i - 1] + t * (xs[i] - xs[i - 1]), ys[i - 1] + t * (ys[i] - ys[i - 1])
+    return xs[-1], ys[-1]
+
+
+def _path_tangent(dists, xs, ys, s):
+    """Return the tangent angle (rad) of the path at arc-length s."""
+    s = max(0.0, min(s, dists[-1]))
+    for i in range(1, len(dists)):
+        if dists[i] >= s:
+            return math.atan2(ys[i] - ys[i - 1], xs[i] - xs[i - 1])
+    return math.atan2(ys[-1] - ys[-2], xs[-1] - xs[-2])
+
+
+def _closest_path_s(dists, xs, ys, px, py):
+    """Return the arc-length s of the point on the path closest to (px, py)."""
+    best_s, best_d2 = 0.0, float("inf")
+    for i in range(1, len(dists)):
+        # Project (px,py) onto segment [i-1, i]
+        ax, ay = xs[i - 1], ys[i - 1]
+        bx, by = xs[i], ys[i]
+        dx, dy = bx - ax, by - ay
+        seg_len2 = dx * dx + dy * dy
+        if seg_len2 < 1e-12:
+            continue
+        t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / seg_len2))
+        cx, cy = ax + t * dx, ay + t * dy
+        d2 = (px - cx) ** 2 + (py - cy) ** 2
         if d2 < best_d2:
-            best_i, best_d2 = i, d2
-
-    # Target a point ~lookahead ahead on the path
-    target_i = best_i
-    for i in range(best_i, len(waypoints)):
-        dx = waypoints[i][0] - robot_x
-        dy = waypoints[i][1] - robot_y
-        if math.sqrt(dx * dx + dy * dy) >= lookahead:
-            target_i = i
-            break
-    else:
-        target_i = len(waypoints) - 1
-
-    tx, ty, _ = waypoints[target_i]
-    dx, dy = tx - robot_x, ty - robot_y
-    desired_yaw = math.atan2(dy, dx)
-
-    # Heading error (wrap to [-pi, pi])
-    err = desired_yaw - robot_yaw
-    err = (err + math.pi) % (2 * math.pi) - math.pi
-
-    done = best_i >= len(waypoints) - 2 and best_d2 < lookahead ** 2
-    return err, done, tx, ty
+            best_d2 = d2
+            best_s = dists[i - 1] + t * (dists[i] - dists[i - 1])
+    return best_s
 
 
 def main():
@@ -110,10 +126,13 @@ def main():
                         help="Enable HeightMap_ DDS publishing in the sim")
     parser.add_argument("--heightmap-debug", action="store_true",
                         help="Visualise height map rays in the viewer")
-    parser.add_argument("--v-forward",  type=float, default=0.4,  help="Forward velocity (m/s)")
-    parser.add_argument("--yaw-gain",   type=float, default=2.0,  help="Proportional yaw gain")
-    parser.add_argument("--lookahead",  type=float, default=1.5,  help="Pursuit lookahead distance (m)")
-    parser.add_argument("--terrain",    action="store_true",       help="Enable terrain heightfield (off by default)")
+    parser.add_argument("--v-forward",     type=float, default=0.4,  help="Forward velocity (m/s)")
+    parser.add_argument("--yaw-gain",      type=float, default=2.0,  help="Heading alignment gain")
+    parser.add_argument("--lateral-gain",  type=float, default=1.5,  help="Lateral centering gain")
+    parser.add_argument("--target-speed",  type=float, default=0.3,  help="Target speed along path (m/s)")
+    parser.add_argument("--target-lead",   type=float, default=1.0,  help="Initial target lead distance (m)")
+    parser.add_argument("--terrain",       action="store_true",       help="Enable terrain heightfield (off by default)")
+    parser.add_argument("--teleop",        action="store_true",       help="Control robot with gamepad instead of auto")
     args = parser.parse_args()
 
     # --- Generate rail scene ---
@@ -148,6 +167,7 @@ def main():
             sim_cmd.append("--heightmap")
         if args.heightmap_debug:
             sim_cmd.append("--heightmap-debug")
+        sim_cmd.append("--uwb")
 
         sim_proc = subprocess.Popen(
             sim_cmd, cwd=_SIM_DIR,
@@ -183,59 +203,130 @@ def main():
 
         print(f"\n=== Go2 Rail-Following Demo ===")
         print(f"v_forward={args.v_forward}  yaw_gain={args.yaw_gain}  "
-              f"lookahead={args.lookahead}")
+              f"target_speed={args.target_speed}")
         print("=" * 50 + "\n")
 
-        # --- Set up high-state subscriber to get robot pose ---
+        # --- Gamepad (teleop mode) ------------------------------------------
+        joy = None
+        if args.teleop:
+            import pygame
+            pygame.init()
+            if pygame.joystick.get_count() == 0:
+                print("ERROR: --teleop requested but no gamepad found")
+                return
+            joy = pygame.joystick.Joystick(0)
+            joy.init()
+            print(f"[teleop] Using gamepad: {joy.get_name()}")
+
+        # --- Set up UWB subscriber to get robot pose ---
         from unitree_sdk2py.core.channel import ChannelSubscriber, ChannelPublisher
-        from unitree_sdk2py.idl.unitree_go.msg.dds_ import SportModeState_
+        from unitree_sdk2py.idl.unitree_go.msg.dds_ import UwbState_
         from unitree_sdk2py.idl.geometry_msgs.msg.dds_ import Pose_, Point_, Quaternion_
 
         marker_pub = ChannelPublisher("rt/human_marker_pose", Pose_)
         marker_pub.Init()
 
-        robot_state = {"x": 0.0, "y": 0.0, "yaw": 0.0, "ready": False}
-        state_lock = threading.Lock()
+        uwb = {"az": 0.0, "pitch": 0.0, "dist": 0.0, "yaw": 0.0, "ready": False}
+        uwb_lock = threading.Lock()
 
-        def _on_high_state(msg):
-            with state_lock:
-                robot_state["x"] = msg.position[0]
-                robot_state["y"] = msg.position[1]
-                robot_state["yaw"] = msg.imu_state.rpy[2]
-                robot_state["ready"] = True
+        def _on_uwb(msg):
+            with uwb_lock:
+                uwb["az"] = msg.orientation_est
+                uwb["pitch"] = msg.pitch_est
+                uwb["dist"] = msg.distance_est
+                uwb["yaw"] = msg.base_yaw
+                uwb["ready"] = True
 
-        state_sub = ChannelSubscriber("rt/sportmodestate", SportModeState_)
-        state_sub.Init(_on_high_state, 10)
+        uwb_sub = ChannelSubscriber("rt/uwbstate", UwbState_)
+        uwb_sub.Init(_on_uwb, 10)
 
-        # Wait for first state update
+        # Publish initial marker so UWB has a target to measure
+        path_dists, path_xs, path_ys = _build_path(waypoints)
+        path_s = args.target_lead  # current arc-length position of target
+        tx, ty = _sample_path(path_dists, path_xs, path_ys, path_s)
+        marker_pub.Write(Pose_(Point_(tx, ty, 0.9), Quaternion_(0, 0, 0, 1)))
+
+        # Wait for first UWB update
         for _ in range(100):
-            with state_lock:
-                if robot_state["ready"]:
+            with uwb_lock:
+                if uwb["ready"]:
                     break
             time.sleep(0.05)
 
-        # --- Pursuit loop ---
+        # --- Control loop ---
+        DEADZONE = 0.1
         dt = 0.1
-        done = False
         step_count = 0
-        while not done:
-            with state_lock:
-                rx, ry, ryaw = robot_state["x"], robot_state["y"], robot_state["yaw"]
+        MIN_DIST = 1.0
 
-            yaw_err, done, tx, ty = _pursuit_step(rx, ry, ryaw, waypoints,
-                                                  lookahead=args.lookahead)
-            marker_pub.Write(Pose_(Point_(tx, ty, 0.9), Quaternion_(0, 0, 0, 1)))
-            print(f"Target: ({tx:.2f}, {ty:.2f})  Robot: ({rx:.2f}, {ry:.2f})  ")
-            vyaw = args.yaw_gain * yaw_err
-            vyaw = max(-2.5, min(2.5, vyaw))  # clamp rotation speed
-            
-            client.Move(args.v_forward, 0.0, vyaw * 2)
-            sleep(dt)
-            step_count += 1
+        if joy:
+            # --- Teleop mode: gamepad controls the robot directly ---
+            print("[teleop] Gamepad active. Left stick = move, right stick X = rotate.")
+            import pygame
+            while True:
+                pygame.event.pump()
+                jlx = joy.get_axis(0)   # left stick X → lateral
+                jly = -joy.get_axis(1)  # left stick Y → forward (inverted)
+                jrx = joy.get_axis(3)   # right stick X → yaw
 
-            if step_count % 50 == 0:
-                print(f"  step {step_count}: pos=({rx:.2f}, {ry:.2f}) "
-                      f"yaw={math.degrees(ryaw):.1f}° err={math.degrees(yaw_err):.1f}°")
+                vx = jly * args.v_forward if abs(jly) > DEADZONE else 0.0
+                vy = -jlx * 0.3 if abs(jlx) > DEADZONE else 0.0
+                vyaw = -jrx * 2.5 if abs(jrx) > DEADZONE else 0.0
+
+                client.Move(vx, vy, vyaw)
+                sleep(dt)
+                step_count += 1
+
+                if step_count % 50 == 0:
+                    print(f"  step {step_count}: vx={vx:.2f} vy={vy:.2f} vyaw={vyaw:.2f}")
+        else:
+            # --- Auto mode: follow path with UWB-based control ---
+            while path_s < path_dists[-1]:
+                # Advance target along the path at constant speed
+                path_s += args.target_speed * dt
+                tx, ty = _sample_path(path_dists, path_xs, path_ys, path_s)
+                marker_pub.Write(Pose_(Point_(tx, ty, 0.9), Quaternion_(0, 0, 0, 1)))
+
+                with uwb_lock:
+                    tag_dist = uwb["dist"]
+                    ryaw = uwb["yaw"]
+
+                # Reconstruct robot world position from UWB
+                az_r = uwb["az"]
+                cos_y, sin_y = math.cos(ryaw), math.sin(ryaw)
+                lx = tag_dist * math.cos(az_r)
+                ly = tag_dist * math.sin(az_r)
+                rx = tx - (cos_y * lx - sin_y * ly)
+                ry = ty - (sin_y * lx + cos_y * ly)
+
+                # Find closest point on path and its tangent
+                robot_s = _closest_path_s(path_dists, path_xs, path_ys, rx, ry)
+                tangent = _path_tangent(path_dists, path_xs, path_ys, robot_s)
+                cx, cy = _sample_path(path_dists, path_xs, path_ys, robot_s)
+
+                # Lateral offset: positive = robot is to the left of the path
+                dx, dy = rx - cx, ry - cy
+                lateral_err = -math.sin(tangent) * dx + math.cos(tangent) * dy
+
+                # Heading error: difference between robot yaw and path tangent
+                heading_err = (tangent - ryaw + math.pi) % (2 * math.pi) - math.pi
+
+                # Forward: slow down / stop when too close to tag
+                vx = 0.0 if tag_dist < MIN_DIST else args.v_forward * min(1.0, (tag_dist - MIN_DIST) / MIN_DIST)
+                # Lateral: push robot back toward path center
+                vy = -args.lateral_gain * lateral_err
+                vy = max(-0.3, min(0.3, vy))
+                # Yaw: align with path tangent
+                vyaw = args.yaw_gain * heading_err
+                vyaw = max(-2.5, min(2.5, vyaw))
+
+                client.Move(vx, vy, vyaw)
+                sleep(dt)
+                step_count += 1
+
+                if step_count % 50 == 0:
+                    print(f"  step {step_count}: target=({tx:.2f}, {ty:.2f}) "
+                          f"lat={lateral_err:+.2f}m hdg={math.degrees(heading_err):+.1f}°")
 
         client.StopMove()
         print(f"\nReached end of road after {step_count} steps.")
