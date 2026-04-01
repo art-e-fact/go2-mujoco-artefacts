@@ -449,6 +449,11 @@ def generate_mujoco_xml(net: RailNetwork, resolution: float = 0.2, terrain: Terr
     _sl, _sw, sh = net.sleeper_size
     rail_z = sh / 2  # rails start at top of (half-buried) sleepers
 
+    # Rail cross-section half-extents for box colliders (mm → m)
+    rail_hw = spec.profile[0][0] * 0.001  # half base width (negative, take abs)
+    rail_hw = abs(rail_hw)
+    rail_hh = max(py for _, py in spec.profile) * 0.001 / 2  # half height
+
     for si in range(len(net.roads)):
         for tag, off in [("L", half_g), ("R", -half_g)]:
             samples = net.sample_string(si, offset=off, resolution=resolution)
@@ -463,6 +468,7 @@ def generate_mujoco_xml(net: RailNetwork, resolution: float = 0.2, terrain: Terr
                 vertex=" ".join(f"{v:.6f}" for v in mesh.vertices.ravel()),
                 face=" ".join(str(i) for i in mesh.faces.ravel()),
             )
+            # Visual only — convex-hull collision is wrong for thin rails
             SubElement(
                 worldbody,
                 "geom",
@@ -470,9 +476,31 @@ def generate_mujoco_xml(net: RailNetwork, resolution: float = 0.2, terrain: Terr
                 type="mesh",
                 mesh=name,
                 material="mat_rail",
-                contype="1",
-                conaffinity="1",
+                contype="0",
+                conaffinity="0",
             )
+            # Box colliders along the rail for accurate collision
+            for ji in range(len(samples) - 1):
+                p0, _ = samples[ji]
+                p1, _ = samples[ji + 1]
+                mx = (p0.x + p1.x) / 2
+                my = (p0.y + p1.y) / 2
+                mz = rail_z + rail_hh
+                dx, dy = p1.x - p0.x, p1.y - p0.y
+                half_len = math.sqrt(dx * dx + dy * dy) / 2
+                yaw = math.atan2(dy, dx)
+                SubElement(
+                    worldbody,
+                    "geom",
+                    name=f"{name}_col{ji}",
+                    type="box",
+                    size=f"{half_len:.4f} {rail_hw:.4f} {rail_hh:.4f}",
+                    pos=f"{mx:.4f} {my:.4f} {mz:.4f}",
+                    euler=f"0 0 {yaw:.6f}",
+                    contype="1",
+                    conaffinity="1",
+                    group="3",
+                )
 
     # Sleepers (deduplicated across all roads) — sunk halfway into ground
     sl, sw, _sh = net.sleeper_size
