@@ -102,6 +102,84 @@ def _closest_path_s(dists, xs, ys, px, py):
     return best_s
 
 
+def _analyze_rails(data, width, height, resolution, forward_yaw, radius=1.0):
+    """Detect rail heading and lateral offset from a heightmap.
+
+    Args:
+        data: flat float32 array (width*height), EMPTY=1e9 for missing cells.
+        width, height, resolution: grid parameters.
+        forward_yaw: approximate forward direction (rad, world frame) to
+                     disambiguate the ±180° PCA ambiguity.
+        radius: only consider cells within this distance (m) from the robot.
+
+    Returns:
+        (rail_heading_world, lateral_offset) or None if insufficient data.
+        rail_heading_world: heading of the rails in world frame (rad).
+        lateral_offset: signed distance from robot to rail midline (m);
+                        positive = robot is to the left of center.
+    """
+    import numpy as np
+
+    valid = data[data < 1e8]
+    if len(valid) < 20:
+        return None
+    # Rails are the highest features — keep cells above the 90th percentile
+    thresh = np.percentile(valid, 99)
+    rail_mask = (data >= thresh) & (data < 1e8)
+    if rail_mask.sum() < 10:
+        return None
+
+    # Cell positions relative to grid center (= robot).
+    # The grid is axis-aligned with the world frame, so these offsets
+    # are world-frame relative displacements from the robot.
+    idx = np.argwhere(rail_mask.reshape(height, width))  # (N, 2) as [iy, ix]
+    cx = (idx[:, 1] - width / 2.0 + 0.5) * resolution   # world-x offset
+    cy = (idx[:, 0] - height / 2.0 + 0.5) * resolution   # world-y offset
+
+    # Only keep cells within `radius` of the robot to ignore distant turns.
+    near = cx**2 + cy**2 <= radius**2
+    cx, cy = cx[near], cy[near]
+    if len(cx) < 10:
+        return None
+
+    # Split into two rail clusters using the gap in perpendicular projection.
+    perp_fwd = -np.sin(forward_yaw) * cx + np.cos(forward_yaw) * cy
+    order = np.argsort(perp_fwd)
+    sorted_perp = perp_fwd[order]
+    gaps = np.diff(sorted_perp)
+    split = np.argmax(gaps)
+    if gaps[split] < 2 * resolution or min(split + 1, len(cx) - split - 1) < 3:
+        return None  # no clear two-rail separation
+
+    # Recenter each rail cluster to remove inter-rail lateral spread.
+    mask_a, mask_b = order[:split + 1], order[split + 1:]
+    ca = np.column_stack([cx[mask_a] - cx[mask_a].mean(),
+                          cy[mask_a] - cy[mask_a].mean()])
+    cb = np.column_stack([cx[mask_b] - cx[mask_b].mean(),
+                          cy[mask_b] - cy[mask_b].mean()])
+    pts = np.vstack([ca, cb])
+
+    # PCA on recentered points: principal axis = rail direction
+    cov = np.cov(pts[:, 0], pts[:, 1])  # 2×2
+    eigvals, eigvecs = np.linalg.eigh(cov)
+    principal = eigvecs[:, 1]  # largest eigenvalue
+    rail_heading = np.arctan2(principal[1], principal[0])
+
+    # Disambiguate ±180°: pick the direction closer to forward_yaw
+    diff = (rail_heading - forward_yaw + np.pi) % (2 * np.pi) - np.pi
+    if abs(diff) > np.pi / 2:
+        rail_heading += np.pi
+    rail_heading = (rail_heading + np.pi) % (2 * np.pi) - np.pi
+
+    # Lateral offset: average of both rail centroids projected onto perp axis.
+    perp_x, perp_y = -np.sin(rail_heading), np.cos(rail_heading)
+    mid_x = (cx[mask_a].mean() + cx[mask_b].mean()) / 2
+    mid_y = (cy[mask_a].mean() + cy[mask_b].mean()) / 2
+    lateral_offset = -(mid_x * perp_x + mid_y * perp_y)
+
+    return rail_heading, lateral_offset, np.column_stack([cx, cy])
+
+
 def main():
     import argparse
     import numpy as np
@@ -127,14 +205,21 @@ def main():
     parser.add_argument("--heightmap-debug", action="store_true",
                         help="Visualise height map rays in the viewer")
     parser.add_argument("--v-forward",     type=float, default=0.4,  help="Forward velocity (m/s)")
-    parser.add_argument("--yaw-gain",      type=float, default=2.0,  help="Heading alignment gain")
-    parser.add_argument("--lateral-gain",  type=float, default=1.5,  help="Lateral centering gain")
+    parser.add_argument("--yaw-gain",      type=float, default=4.0,  help="Heading alignment gain")
+    parser.add_argument("--lateral-gain",  type=float, default=3.5,  help="Lateral centering gain")
     parser.add_argument("--target-speed",  type=float, default=0.3,  help="Target speed along path (m/s)")
     parser.add_argument("--target-lead",   type=float, default=1.0,  help="Initial target lead distance (m)")
     parser.add_argument("--terrain",       action="store_true",       help="Enable terrain heightfield (off by default)")
     parser.add_argument("--teleop",        action="store_true",       help="Control robot with gamepad instead of auto")
     parser.add_argument("--rerun",         action="store_true",       help="Stream data to Rerun viewer")
+    parser.add_argument("--heightmap-nav", action="store_true",
+                        help="Steer using heightmap rail detection instead of path geometry")
+    parser.add_argument("--policy", choices=["wtw", "rsl_rl"], default="wtw",
+                        help="Locomotion policy (default: wtw)")
     args = parser.parse_args()
+
+    if args.heightmap_nav:
+        args.heightmap = True
 
     # --- Generate rail scene ---
     rng = np.random.default_rng(args.seed)
@@ -162,7 +247,8 @@ def main():
         # --- sport_mujoco.py ---
         sim_cmd = [get_python_executable(), "-u", os.path.join(_SIM_DIR, "sport_mujoco.py"),
                    "--interface", args.interface, "--domain", str(args.domain),
-                   "--scene", scene_path, "--keyframe", "rail_start"]
+                   "--scene", scene_path, "--keyframe", "rail_start",
+                   "--policy", args.policy]
         if args.headless:
             sim_cmd.append("--headless")
         if args.record:
@@ -178,7 +264,7 @@ def main():
         sim_proc = subprocess.Popen(
             sim_cmd, cwd=_SIM_DIR,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            text=True, env=env,
+            text=True, env=env, start_new_session=True,
         )
         sim_ready    = threading.Event()
         sim_standing = threading.Event()
@@ -259,36 +345,39 @@ def main():
                     break
             time.sleep(0.05)
 
-        # --- Rerun: heightmap subscriber (polled in the control loop) ---
+        # --- Heightmap subscriber (for --rerun and/or --heightmap-nav) ---
         hm_sub = None
-        if args.rerun:
+        hm_data = None   # latest heightmap data array
+        hm_msg = None    # latest HeightMap_ message
+        if args.rerun or args.heightmap_nav:
             from unitree_sdk2py.idl.unitree_go.msg.dds_ import HeightMap_
             hm_sub = ChannelSubscriber("rt/utlidar/height_map_array", HeightMap_)
             hm_sub.Init()
 
         def _poll_heightmap():
-            """Read latest HeightMap_ and log to Rerun. Returns True if logged."""
+            """Read latest HeightMap_, update hm_data/hm_msg, optionally log to Rerun."""
+            nonlocal hm_data, hm_msg
             if hm_sub is None:
-                return False
+                return
             msg = hm_sub.Read()
             if msg is None:
-                return False
-            data = np.array(msg.data, dtype=np.float32)
-            mask = data < 1e8
-            if not mask.any():
-                return False
-            ix = np.arange(len(data)) % msg.width
-            iy = np.arange(len(data)) // msg.width
-            rr.set_time("sim_time", timestamp=msg.stamp)
-            rr.log("heightmap", rr.Points3D(
-                np.column_stack([
-                    msg.origin[0] + ix[mask] * msg.resolution,
-                    msg.origin[1] + iy[mask] * msg.resolution,
-                    data[mask],
-                ]),
-                radii=0.015,
-            ))
-            return True
+                return
+            hm_msg = msg
+            hm_data = np.array(msg.data, dtype=np.float32)
+            if args.rerun:
+                mask = hm_data < 1e8
+                if mask.any():
+                    ix = np.arange(len(hm_data)) % msg.width
+                    iy = np.arange(len(hm_data)) // msg.width
+                    rr.set_time("sim_time", timestamp=msg.stamp)
+                    rr.log("heightmap", rr.Points3D(
+                        np.column_stack([
+                            msg.origin[0] + ix[mask] * msg.resolution,
+                            msg.origin[1] + iy[mask] * msg.resolution,
+                            hm_data[mask],
+                        ]),
+                        radii=0.015,
+                    ))
 
         # --- Control loop ---
         DEADZONE = 0.1
@@ -314,10 +403,90 @@ def main():
                 sleep(dt)
                 _poll_heightmap()
                 step_count += 1
-        else:
-            # --- Auto mode: follow path with UWB-based control ---
+        elif args.heightmap_nav:
+            # --- Heightmap-nav mode: steer using rail detection ---
             while path_s < path_dists[-1]:
-                # Advance target along the path at constant speed
+                path_s += args.target_speed * dt
+                tx, ty = _sample_path(path_dists, path_xs, path_ys, path_s)
+                marker_pub.Write(Pose_(Point_(tx, ty, 0.9), Quaternion_(0, 0, 0, 1)))
+
+                with uwb_lock:
+                    tag_dist = uwb["dist"]
+                    ryaw = uwb["yaw"]
+                    az = uwb["az"]
+
+                _poll_heightmap()
+
+                # Approximate forward direction in world frame
+                forward_yaw = ryaw + az
+
+                result = None
+                if hm_data is not None and hm_msg is not None:
+                    result = _analyze_rails(hm_data, hm_msg.width, hm_msg.height,
+                                            hm_msg.resolution, forward_yaw)
+
+                if result is None:
+                    client.StopMove()
+                    if step_count % 20 == 0:
+                        print("  [heightmap-nav] WARNING: no rails detected, stopping")
+                    sleep(dt)
+                    step_count += 1
+                    continue
+
+                rail_heading, lateral_err, rail_xy = result
+                heading_err = (rail_heading - ryaw + math.pi) % (2 * math.pi) - math.pi
+
+                vx = 0.0 if tag_dist < MIN_DIST else args.v_forward * min(1.0, (tag_dist - MIN_DIST) / MIN_DIST)
+                vy = max(-0.6, min(0.6, -args.lateral_gain * lateral_err))
+                vyaw = max(-2.5, min(2.5, args.yaw_gain * heading_err))
+
+
+                client.Move(vx, vy, vyaw)
+
+                if args.rerun:
+                    # Robot world position = grid center
+                    rx = hm_msg.origin[0] + hm_msg.width * hm_msg.resolution / 2
+                    ry = hm_msg.origin[1] + hm_msg.height * hm_msg.resolution / 2
+                    rz = 0.35
+                    L = 2.0  # arrow length
+                    rr.log("rail_analysis/forward_yaw", rr.Arrows3D(
+                        origins=[[rx, ry, rz]],
+                        vectors=[[L * math.cos(forward_yaw), L * math.sin(forward_yaw), 0]],
+                        colors=[[0, 200, 0]],
+                    ))
+                    rr.log("rail_analysis/rail_heading", rr.Arrows3D(
+                        origins=[[rx, ry, rz]],
+                        vectors=[[L * math.cos(rail_heading), L * math.sin(rail_heading), 0]],
+                        colors=[[255, 255, 0]],
+                    ))
+                    rr.log("rail_analysis/robot_yaw", rr.Arrows3D(
+                        origins=[[rx, ry, rz]],
+                        vectors=[[L * math.cos(ryaw), L * math.sin(ryaw), 0]],
+                        colors=[[100, 100, 255]],
+                    ))
+                    # Rail cells (world coords)
+                    rr.log("rail_analysis/cells", rr.Points3D(
+                        np.column_stack([rx + rail_xy[:, 0], ry + rail_xy[:, 1],
+                                         np.full(len(rail_xy), rz)]),
+                        colors=[[255, 50, 50]], radii=0.03,
+                    ))
+                    # Lateral offset line (robot → track center)
+                    px, py = -math.sin(rail_heading), math.cos(rail_heading)
+                    rr.log("rail_analysis/lateral", rr.LineStrips3D(
+                        [[[rx, ry, rz],
+                          [rx - lateral_err * px, ry - lateral_err * py, rz]]],
+                        colors=[[255, 128, 0]], radii=0.02,
+                    ))
+
+                sleep(dt)
+                step_count += 1
+
+                if step_count % 50 == 0:
+                    print(f"  step {step_count}: rail_hdg={math.degrees(rail_heading):.1f}° "
+                          f"lat={lateral_err:+.3f}m hdg_err={math.degrees(heading_err):+.1f}°")
+        else:
+            # --- Path-based auto mode: follow path with UWB-based control ---
+            while path_s < path_dists[-1]:
                 path_s += args.target_speed * dt
                 tx, ty = _sample_path(path_dists, path_xs, path_ys, path_s)
                 marker_pub.Write(Pose_(Point_(tx, ty, 0.9), Quaternion_(0, 0, 0, 1)))
@@ -326,7 +495,6 @@ def main():
                     tag_dist = uwb["dist"]
                     ryaw = uwb["yaw"]
 
-                # Reconstruct robot world position from UWB
                 az_r = uwb["az"]
                 cos_y, sin_y = math.cos(ryaw), math.sin(ryaw)
                 lx = tag_dist * math.cos(az_r)
@@ -334,26 +502,17 @@ def main():
                 rx = tx - (cos_y * lx - sin_y * ly)
                 ry = ty - (sin_y * lx + cos_y * ly)
 
-                # Find closest point on path and its tangent
                 robot_s = _closest_path_s(path_dists, path_xs, path_ys, rx, ry)
                 tangent = _path_tangent(path_dists, path_xs, path_ys, robot_s)
                 cx, cy = _sample_path(path_dists, path_xs, path_ys, robot_s)
 
-                # Lateral offset: positive = robot is to the left of the path
                 dx, dy = rx - cx, ry - cy
                 lateral_err = -math.sin(tangent) * dx + math.cos(tangent) * dy
-
-                # Heading error: difference between robot yaw and path tangent
                 heading_err = (tangent - ryaw + math.pi) % (2 * math.pi) - math.pi
 
-                # Forward: slow down / stop when too close to tag
                 vx = 0.0 if tag_dist < MIN_DIST else args.v_forward * min(1.0, (tag_dist - MIN_DIST) / MIN_DIST)
-                # Lateral: push robot back toward path center
-                vy = -args.lateral_gain * lateral_err
-                vy = max(-0.3, min(0.3, vy))
-                # Yaw: align with path tangent
-                vyaw = args.yaw_gain * heading_err
-                vyaw = max(-2.5, min(2.5, vyaw))
+                vy = max(-0.3, min(0.3, -args.lateral_gain * lateral_err))
+                vyaw = max(-2.5, min(2.5, args.yaw_gain * heading_err))
 
                 client.Move(vx, vy, vyaw)
                 sleep(dt)
@@ -363,6 +522,8 @@ def main():
         client.StopMove()
         print(f"\nReached end of road after {step_count} steps.")
 
+    except KeyboardInterrupt:
+        print("\nInterrupted.")
     finally:
         if recorder is not None:
             recorder.stop()
