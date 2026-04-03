@@ -200,16 +200,16 @@ def main():
                         help="Save spectator-view recording (passed to sport_mujoco.py)")
     parser.add_argument("--record-front", metavar="PATH", default=None,
                         help="Save front-camera recording to PATH")
-    parser.add_argument("--heightmap",       action="store_true",
-                        help="Enable HeightMap_ DDS publishing in the sim")
+    parser.add_argument("--no-heightmap",     action="store_false", dest="heightmap", default=True,
+                        help="Disable HeightMap_ DDS publishing in the sim")
     parser.add_argument("--heightmap-debug", action="store_true",
                         help="Visualise height map rays in the viewer")
-    parser.add_argument("--v-forward",     type=float, default=0.4,  help="Forward velocity (m/s)")
-    parser.add_argument("--yaw-gain",      type=float, default=4.0,  help="Heading alignment gain")
-    parser.add_argument("--lateral-gain",  type=float, default=3.5,  help="Lateral centering gain")
+    parser.add_argument("--v-forward",     type=float, default=1.0,  help="Forward velocity (m/s)")
+    parser.add_argument("--yaw-gain",      type=float, default=1.0,  help="Heading alignment gain")
+    parser.add_argument("--lateral-gain",  type=float, default=1.0,  help="Lateral centering gain")
     parser.add_argument("--target-speed",  type=float, default=0.3,  help="Target speed along path (m/s)")
     parser.add_argument("--target-lead",   type=float, default=1.0,  help="Initial target lead distance (m)")
-    parser.add_argument("--terrain",       action="store_true",       help="Enable terrain heightfield (off by default)")
+    parser.add_argument("--no-terrain",       action="store_false", dest="terrain", default=True, help="Disable terrain heightfield")
     parser.add_argument("--teleop",        action="store_true",       help="Control robot with gamepad instead of auto")
     parser.add_argument("--rerun",         action="store_true",       help="Stream data to Rerun viewer")
     parser.add_argument("--heightmap-nav", action="store_true",

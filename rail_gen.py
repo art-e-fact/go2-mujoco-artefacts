@@ -46,12 +46,12 @@ JIS_60KG = _make_jis60kg()
 class TerrainSpec:
     """Configuration for terrain heightfield generation."""
     margin: float = 3.0          # extra extent beyond network bounds (m)
-    resolution: float = 0.1      # grid cell size (m)
-    base_depth: float = 0.4      # depth below rail level (m)
+    resolution: float = 0.2      # grid cell size (m)
+    base_depth: float = 0.15     # depth below rail level (m)
     slope_width: float = 1.2     # lateral distance of slope from rail to base (m)
     flat_radius: float = 0.8     # half-width of flat zone around centerline (m)
     noise_amplitude: float = 0.2 # noise height std-dev (m)
-    noise_scale: int = 20        # coarse grid cells per noise wavelength
+    noise_octaves: int = 20      # Perlin noise octaves (higher = more detail)
 
 
 # --- Geometry helpers ---
@@ -78,19 +78,12 @@ def _obb_overlap_2d(cx1, cy1, a1, cx2, cy2, a2, hx, hy):
     return True  # no separating axis → overlap
 
 
-def _smooth_noise_2d(nrow, ncol, scale, rng):
-    """Bilinear-interpolated smooth random noise with unit variance."""
-    cr, cc = max(2, nrow // scale + 2), max(2, ncol // scale + 2)
-    coarse = rng.standard_normal((cr, cc))
-    ys, xs = np.linspace(0, cr - 1, nrow), np.linspace(0, cc - 1, ncol)
-    xg, yg = np.meshgrid(xs, ys)
-    x0 = np.clip(xg.astype(int), 0, cc - 2)
-    y0 = np.clip(yg.astype(int), 0, cr - 2)
-    fx, fy = xg - x0, yg - y0
-    return (coarse[y0, x0] * (1 - fx) * (1 - fy) +
-            coarse[y0, x0 + 1] * fx * (1 - fy) +
-            coarse[y0 + 1, x0] * (1 - fx) * fy +
-            coarse[y0 + 1, x0 + 1] * fx * fy)
+def _perlin_noise_2d(nrow, ncol, octaves, seed):
+    """Generate 2D Perlin noise grid using the perlin-noise package."""
+    from perlin_noise import PerlinNoise
+    noise = PerlinNoise(octaves=octaves, seed=seed)
+    return np.array([[noise([r / nrow, c / ncol]) for c in range(ncol)]
+                     for r in range(nrow)])
 
 
 # --- Network ---
@@ -250,7 +243,8 @@ class RailNetwork:
 
         # Add noise (masked by t so it's zero under the rails)
         rng = rng or np.random.default_rng()
-        elevation += _smooth_noise_2d(nrow, ncol, spec.noise_scale, rng) * spec.noise_amplitude * t
+        seed = int(rng.integers(0, 2**31))
+        elevation += _perlin_noise_2d(nrow, ncol, spec.noise_octaves, seed) * spec.noise_amplitude * t
 
         return elevation, (xmin, xmax, ymin, ymax)
 
@@ -535,7 +529,7 @@ def generate_mujoco_xml(net: RailNetwork, resolution: float = 0.2, terrain: Terr
         SubElement(
             asset, "hfield", name="terrain",
             nrow=str(nrow), ncol=str(ncol),
-            size=f"{rx:.4f} {ry:.4f} {e_range:.4f} 0.1",
+            size=f"{rx:.4f} {ry:.4f} {e_range:.4f} 0.5",
             elevation=" ".join(f"{v:.4f}" for v in elevation[::-1].ravel()),
         )
         SubElement(
