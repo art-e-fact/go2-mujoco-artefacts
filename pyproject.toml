@@ -1,0 +1,30 @@
+[project]
+name = "go2-mujoco-artefacts"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "artefacts-cli>=0.15.0",
+    "mediapy>=1.2.6",
+    "mujoco>=3.6.0",
+    "numpy>=2.4.3",
+    "opencv-python>=4.13.0.92",
+    "opensimplex>=0.4.5.1",
+    "perlin-noise==1.14",
+    "pygame>=2.6.1",
+    "pyglm>=2.8.3",
+    "pytest>=9.0.2",
+    "rerun-sdk>=0.31.1",
+    "torch>=2.11.0",
+    "unitree-sdk2py",
+]
+
+[tool.uv.sources]
+# Pending PR in the official repo: https://github.com/unitreerobotics/unitree_sdk2_python/pull/107
+unitree-sdk2py = { git = "https://github.com/carlosdp/unitree_sdk2_python.git", branch = "proper-python-modules" }
+
+
+[tool.ty.environment]
+python = ".venv"
+

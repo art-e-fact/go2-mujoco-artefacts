@@ -1,61 +1,31 @@
 # Go2 MuJoCo Walk Demo (Artefacts)
 
-Unitree Go2 walking demo using MuJoCo and the Walk-These-Ways pretrained policy.
+Unitree Go2 walking demo using MuJoCo.
 The demo runs on ubuntu, but also MacOS natively without vms or containerization.
 
 A flat scene is added to the `unitree_mujoco` package (see copy stage) to provide a simple demo for the [Go2](https://www.unitree.com/go2) to move.
 
-With thanks to [Teddy Liao](https://github.com/Teddy-Liao) for the pretrained policy in the [walk-these-ways-go2](https://github.com/Teddy-Liao/walk-these-ways-go2) repository.
 
 ## Setup
 
 ### Prerequisites
 
-You will need cyclonedds installed if you do not have it already. We suggest to install outside of this project.
-```bash
-cd ~
-git clone https://github.com/eclipse-cyclonedds/cyclonedds -b releases/0.10.x 
-cd cyclonedds && mkdir build install && cd build
-cmake .. -DCMAKE_INSTALL_PREFIX=../install
-cmake --build . --target install
-```
+This project uses `uv` for Python environment management. For installation instructions, see https://docs.astral.sh/uv/getting-started/installation/
 
 ### Project Setup
 
 ```bash
-cd ~/go2-mujoco-artefacts
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate
-
-# Clone required repos
+# Clone the MuJoCo simulation source
 mkdir -p src
 git clone --depth=1 -b high-level-direct https://github.com/art-e-fact/unitree_mujoco.git src/unitree_mujoco
-git clone --depth=1 https://github.com/unitreerobotics/unitree_sdk2_python.git src/unitree_sdk2_python
-# Install the sdk
-cd src/unitree_sdk2_python
-export CYCLONEDDS_HOME=~/cyclonedds/install
-pip install -e .
+```
 
-# Back to root of repository
-cd ../..
-# Download WTW policy checkpoints (3 files only, no full repo clone)
-bash scripts/fetch_wtw_checkpoints.sh
 
-# Install dependencies
-pip install -r requirements.txt
-```
-## Run (Linux)
+## Run
 ```bash
-source venv/bin/activate # if not already
-python go2_wtw_demo.py
+uv run go2_rails_demo.py  --rerun --seed 123 --policy rsl_rl --heightmap-nav
 ```
-## Run (MacOS)
-```bash
-source venv/bin/activate # if not already
-mjpython go2_wtw_demo.py
-```
-The robot will walk forward and turn left in a loop.
+The robot should walk on the rails following the target object.
 
 ### Run test with artefacts
 
