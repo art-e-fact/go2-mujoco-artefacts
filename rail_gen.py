@@ -283,7 +283,7 @@ class RailNetworkBuilder:
     max_road_length: float = 30.0
     rail_spec: RailSpec = field(default_factory=lambda: JIS_60KG)
     sleeper_spacing: float = 0.6
-    sleeper_size: tuple[float, float, float] = (0.2, 1.4, 0.01  )
+    sleeper_size: tuple[float, float, float] = (0.2, 1.4, 0.07)
 
     def _grow_road(self, rng, start, n_steps):
         """Grow a single road from *start* ``(x, y, heading_deg)`` for *n_steps*."""
@@ -462,7 +462,7 @@ def generate_mujoco_xml(net: RailNetwork, resolution: float = 0.2, terrain: Terr
                 vertex=" ".join(f"{v:.6f}" for v in mesh.vertices.ravel()),
                 face=" ".join(str(i) for i in mesh.faces.ravel()),
             )
-            # Visual only — convex-hull collision is wrong for thin rails
+            # Visual only — convex-hull collision won't work for long rails
             SubElement(
                 worldbody,
                 "geom",
@@ -510,8 +510,8 @@ def generate_mujoco_xml(net: RailNetwork, resolution: float = 0.2, terrain: Terr
             pos=f"{pos.x:.4f} {pos.y:.4f} {0:.4f}",
             euler=f"0 0 {yaw:.6f}",
             material="mat_sleeper",
-            contype="0",
-            conaffinity="0",
+            contype="1",
+            conaffinity="1",
         )
 
     # Terrain heightfield

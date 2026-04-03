@@ -207,7 +207,7 @@ def main():
     parser.add_argument("--v-forward",     type=float, default=1.0,  help="Forward velocity (m/s)")
     parser.add_argument("--yaw-gain",      type=float, default=1.0,  help="Heading alignment gain")
     parser.add_argument("--lateral-gain",  type=float, default=1.0,  help="Lateral centering gain")
-    parser.add_argument("--target-speed",  type=float, default=0.3,  help="Target speed along path (m/s)")
+    parser.add_argument("--target-speed",  type=float, default=0.5,  help="Target speed along path (m/s)")
     parser.add_argument("--target-lead",   type=float, default=1.0,  help="Initial target lead distance (m)")
     parser.add_argument("--no-terrain",       action="store_false", dest="terrain", default=True, help="Disable terrain heightfield")
     parser.add_argument("--teleop",        action="store_true",       help="Control robot with gamepad instead of auto")
