@@ -67,6 +67,10 @@ def main():
                         help="Save spectator-view recording (passed to sport_mujoco.py)")
     parser.add_argument("--record-front", metavar="PATH", default=None,
                         help="Save front-camera recording to PATH (e.g. front.mp4)")
+    parser.add_argument("--heightmap",  action="store_true",
+                        help="Enable HeightMap_ DDS publishing in the sim")
+    parser.add_argument("--heightmap-debug", action="store_true",
+                        help="Visualise height map rays in the viewer (implies --heightmap)")
     parser.add_argument("--v-forward",      type=float, default=0.4,  help="Forward velocity (m/s)")
     parser.add_argument("--v-lateral",      type=float, default=0.0,  help="Lateral velocity (m/s)")
     parser.add_argument("--rotation-speed", type=float, default=2.5,  help="Rotation speed (rad/s)")
@@ -88,6 +92,10 @@ def main():
             sim_cmd += ["--record", os.path.abspath(args.record)]
         if args.telemetry:
             sim_cmd += ["--telemetry", os.path.abspath(args.telemetry)]
+        if args.heightmap:
+            sim_cmd.append("--heightmap")
+        if args.heightmap_debug:
+            sim_cmd.append("--heightmap-debug")
 
         sim_proc = subprocess.Popen(
             sim_cmd, cwd=_SIM_DIR,
@@ -113,6 +121,28 @@ def main():
         client = SportClient()
         client.SetTimeout(10.0)
         client.Init()
+
+        # --- HeightMap subscriber (verification) ---
+        if args.heightmap:
+            from unitree_sdk2py.core.channel import ChannelSubscriber
+            from unitree_sdk2py.idl.unitree_go.msg.dds_ import HeightMap_
+
+            def _on_heightmap(msg):
+                import numpy as _np
+                arr = _np.array(msg.data, dtype=_np.float32)
+                filled = arr[arr < 1.0e9]
+                if len(filled) > 0:
+                    print(f"[heightmap] t={msg.stamp:.2f} {msg.width}x{msg.height} "
+                          f"origin=({msg.origin[0]:.2f},{msg.origin[1]:.2f}) "
+                          f"cells={len(filled)}/{len(arr)} "
+                          f"h=[{filled.min():.3f}, {filled.max():.3f}] "
+                          f"avg={filled.mean():.3f} std={filled.std():.3f} "
+                          f"median={_np.median(filled):.3f} "
+                          f"p95={_np.percentile(filled, 95):.3f} "
+                          f"p99={_np.percentile(filled, 99):.3f}")
+
+            hmap_sub = ChannelSubscriber("rt/utlidar/height_map_array", HeightMap_)
+            hmap_sub.Init(_on_heightmap, 10)
 
         telemetry_path = os.path.abspath(args.telemetry) if args.telemetry else None
         sleep = (lambda dt: sim_sleep(dt, telemetry_path)) if telemetry_path else time.sleep
