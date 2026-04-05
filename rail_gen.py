@@ -701,7 +701,7 @@ class RailwayScene:
             SubElement(kf, "key", name="rail_start", qpos=qpos, ctrl=ctrl)
 
         # Human-marker mocap body (visible + collidable for lidar)
-        marker = SubElement(worldbody, "body", name="human_marker", mocap="true")
+        marker = SubElement(worldbody, "body", name="uwb_tag", mocap="true")
         SubElement(marker, "geom", type="cylinder", size="0.2 0.9",
                    rgba="1.0 0.5 0.0 0.5", contype="0", conaffinity="0")
 

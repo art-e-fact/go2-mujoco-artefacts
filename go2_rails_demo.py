@@ -315,7 +315,7 @@ def main():
         from unitree_sdk2py.idl.unitree_go.msg.dds_ import UwbState_
         from unitree_sdk2py.idl.geometry_msgs.msg.dds_ import Pose_, Point_, Quaternion_
 
-        marker_pub = ChannelPublisher("rt/human_marker_pose", Pose_)
+        marker_pub = ChannelPublisher("rt/uwb_tag_pose", Pose_)
         marker_pub.Init()
 
         uwb = {"az": 0.0, "pitch": 0.0, "dist": 0.0, "yaw": 0.0, "ready": False}
