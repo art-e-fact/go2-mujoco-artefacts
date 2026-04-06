@@ -19,11 +19,9 @@ import subprocess
 from utils import get_python_executable, sim_sleep, last_sim_time, FrontCameraRecorder
 
 _HERE    = os.path.dirname(os.path.abspath(__file__))
-_SIM_DIR = os.path.join(_HERE, "src", "unitree_mujoco", "simulate_python")
 _SDK_DIR = os.path.join(_HERE, "src", "unitree_sdk2_python")
 
 sys.path.insert(0, _SDK_DIR)
-sys.path.insert(0, _SIM_DIR)
 
 
 def _drain(proc, events):
@@ -52,7 +50,7 @@ def main():
     import argparse
     from unitree_sdk2py.core.channel import ChannelFactoryInitialize
     from unitree_sdk2py.go2.sport.sport_client import SportClient
-    import config
+    from unitree_mujoco import config
 
     parser = argparse.ArgumentParser(description="Go2 Walk-These-Ways Demo")
     parser.add_argument("--cycles",    type=int,   default=1,   help="Number of square-path cycles")
@@ -82,7 +80,8 @@ def main():
 
     try:
         # --- sport_mujoco.py: unified sim + WTW + RPC server in one process ---
-        sim_cmd = [get_python_executable(), "-u", os.path.join(_SIM_DIR, "sport_mujoco.py"),
+        _sport_mujoco = os.path.join(os.path.dirname(sys.executable), "sport-mujoco")
+        sim_cmd = [_sport_mujoco,
                    "--interface", args.interface, "--domain", str(args.domain)]
         if args.headless:
             sim_cmd.append("--headless")
@@ -98,7 +97,7 @@ def main():
             sim_cmd.append("--heightmap-debug")
 
         sim_proc = subprocess.Popen(
-            sim_cmd, cwd=_SIM_DIR,
+            sim_cmd,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, env=env,
         )

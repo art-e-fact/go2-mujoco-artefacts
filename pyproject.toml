@@ -17,12 +17,18 @@ dependencies = [
     "pytest>=9.0.2",
     "rerun-sdk>=0.31.1",
     "torch>=2.11.0",
+    "unitree-mujoco",
     "unitree-sdk2py",
 ]
 
 [tool.uv.sources]
 # Pending PR in the official repo: https://github.com/unitreerobotics/unitree_sdk2_python/pull/107
 unitree-sdk2py = { git = "https://github.com/carlosdp/unitree_sdk2_python.git", branch = "proper-python-modules" }
+
+# NOTE: Update the revision (commit hash) if necessary before committing
+unitree-mujoco = { git = "https://github.com/art-e-fact/unitree_mujoco.git", rev = "ddb799e04810d6ed89d39beb7a28d5fe8ec73105" }
+# For development, install the local clone in editable mode:
+# unitree-mujoco = { path = "src/unitree_mujoco", editable = true }
 
 
 [tool.ty.environment]

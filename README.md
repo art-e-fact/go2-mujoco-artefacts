@@ -12,14 +12,6 @@ A flat scene is added to the `unitree_mujoco` package (see copy stage) to provid
 
 This project uses `uv` for Python environment management. For installation instructions, see https://docs.astral.sh/uv/getting-started/installation/
 
-### Project Setup
-
-```bash
-# Clone the MuJoCo simulation source
-mkdir -p src
-git clone --depth=1 -b high-level-direct https://github.com/art-e-fact/unitree_mujoco.git src/unitree_mujoco
-```
-
 
 ## Run
 ```bash
