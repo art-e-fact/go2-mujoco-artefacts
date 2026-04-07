@@ -45,13 +45,14 @@ JIS_60KG = _make_jis60kg()
 @dataclass
 class TerrainSpec:
     """Configuration for terrain heightfield generation."""
-    margin: float = 3.0          # extra extent beyond network bounds (m)
-    resolution: float = 0.2      # grid cell size (m)
-    base_depth: float = 0.15     # depth below rail level (m)
-    slope_width: float = 1.2     # lateral distance of slope from rail to base (m)
-    flat_radius: float = 0.8     # half-width of flat zone around centerline (m)
-    noise_amplitude: float = 0.2 # noise height std-dev (m)
-    noise_octaves: int = 20      # Perlin noise octaves (higher = more detail)
+
+    margin: float = 3.0  # extra extent beyond network bounds (m)
+    resolution: float = 0.2  # grid cell size (m)
+    base_depth: float = 0.15  # depth below rail level (m)
+    slope_width: float = 1.2  # lateral distance of slope from rail to base (m)
+    flat_radius: float = 0.8  # half-width of flat zone around centerline (m)
+    noise_amplitude: float = 0.2  # noise height std-dev (m)
+    noise_octaves: int = 20  # Perlin noise octaves (higher = more detail)
 
 
 # --- Geometry helpers ---
@@ -81,9 +82,11 @@ def _obb_overlap_2d(cx1, cy1, a1, cx2, cy2, a2, hx, hy):
 def _perlin_noise_2d(nrow, ncol, octaves, seed):
     """Generate 2D Perlin noise grid using the perlin-noise package."""
     from perlin_noise import PerlinNoise
+
     noise = PerlinNoise(octaves=octaves, seed=seed)
-    return np.array([[noise([r / nrow, c / ncol]) for c in range(ncol)]
-                     for r in range(nrow)])
+    return np.array(
+        [[noise([r / nrow, c / ncol]) for c in range(ncol)] for r in range(nrow)]
+    )
 
 
 # --- Network ---
@@ -160,7 +163,9 @@ class RailNetwork:
             )
         return results
 
-    def sample_sleepers(self, rng: np.random.Generator | None = None) -> list[tuple[glm.vec3, glm.quat]]:
+    def sample_sleepers(
+        self, rng: np.random.Generator | None = None
+    ) -> list[tuple[glm.vec3, glm.quat]]:
         """Sample sleeper poses across all roads, eliminating overlaps.
 
         Sleepers from all roads are pooled. Pairs whose oriented bounding
@@ -181,9 +186,12 @@ class RailNetwork:
         # Extract center (x, y) and heading for OBB tests
         cx = np.array([p.x for p, _ in poses])
         cy = np.array([p.y for p, _ in poses])
-        angles = np.array([math.atan2(2 * (q.w * q.z + q.x * q.y),
-                                       1 - 2 * (q.y * q.y + q.z * q.z))
-                           for _, q in poses])
+        angles = np.array(
+            [
+                math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z))
+                for _, q in poses
+            ]
+        )
 
         def _find_overlap(cx, cy, angles):
             """Return index pair (i, j) of first OBB overlap, or None."""
@@ -201,8 +209,9 @@ class RailNetwork:
                 if i >= j:
                     continue
                 # 2D SAT with 4 axes (2 edge normals per box)
-                if _obb_overlap_2d(cx[i], cy[i], angles[i],
-                                   cx[j], cy[j], angles[j], hx, hy):
+                if _obb_overlap_2d(
+                    cx[i], cy[i], angles[i], cx[j], cy[j], angles[j], hx, hy
+                ):
                     return i, j
             return None
 
@@ -218,7 +227,9 @@ class RailNetwork:
 
         return poses
 
-    def generate_terrain(self, spec: TerrainSpec, rng: np.random.Generator | None = None):
+    def generate_terrain(
+        self, spec: TerrainSpec, rng: np.random.Generator | None = None
+    ):
         """Generate terrain elevation grid: flat under rails, sloping to base depth."""
         all_pts = np.vstack([np.array([(x, y) for x, y, _ in r]) for r in self.roads])
         xmin, ymin = all_pts.min(axis=0) - spec.margin
@@ -244,7 +255,11 @@ class RailNetwork:
         # Add noise (masked by t so it's zero under the rails)
         rng = rng or np.random.default_rng()
         seed = int(rng.integers(0, 2**31))
-        elevation += _perlin_noise_2d(nrow, ncol, spec.noise_octaves, seed) * spec.noise_amplitude * t
+        elevation += (
+            _perlin_noise_2d(nrow, ncol, spec.noise_octaves, seed)
+            * spec.noise_amplitude
+            * t
+        )
 
         return elevation, (xmin, xmax, ymin, ymax)
 
@@ -351,7 +366,9 @@ class RailNetworkBuilder:
         if roads:
             all_pts = np.vstack([np.array([(x, y) for x, y, _ in r]) for r in roads])
             center = (all_pts.min(axis=0) + all_pts.max(axis=0)) / 2
-            roads = [[(x - center[0], y - center[1], h) for x, y, h in r] for r in roads]
+            roads = [
+                [(x - center[0], y - center[1], h) for x, y, h in r] for r in roads
+            ]
 
         return RailNetwork(
             spec=self.rail_spec,
@@ -402,6 +419,15 @@ def _extrude_profile(profile_mm, samples, z_offset: float = 0.0):
             v = pos + float(px) * left + float(py + z_offset) * glm.vec3(0, 0, 1)
             verts[si * n_prof + pi] = [v.x, v.y, v.z]
 
+    # Append centroid vertices for end caps (non-convex profile needs centroid fan)
+    sc_idx = n_samp * n_prof
+    ec_idx = n_samp * n_prof + 1
+    verts = np.vstack([
+        verts,
+        verts[:n_prof].mean(axis=0, keepdims=True),
+        verts[(n_samp - 1) * n_prof:].mean(axis=0, keepdims=True),
+    ])
+
     faces = []
     for si in range(n_samp - 1):
         for pi in range(n_prof):
@@ -410,6 +436,17 @@ def _extrude_profile(profile_mm, samples, z_offset: float = 0.0):
             c, d = (si + 1) * n_prof + pn, (si + 1) * n_prof + pi
             faces.extend([[a, d, c], [a, c, b]])
 
+    # Start cap: [sc, pi, pn] → normal in -forward direction
+    for pi in range(n_prof):
+        pn = (pi + 1) % n_prof
+        faces.append([sc_idx, pi, pn])
+
+    # End cap: reversed winding → normal in +forward direction
+    base = (n_samp - 1) * n_prof
+    for pi in range(n_prof):
+        pn = (pi + 1) % n_prof
+        faces.append([ec_idx, base + pn, base + pi])
+
     faces = np.array(faces, dtype=int)
     return MeshData(verts, faces, _compute_vertex_normals(verts, faces))
 
@@ -417,7 +454,9 @@ def _extrude_profile(profile_mm, samples, z_offset: float = 0.0):
 # --- Output ---
 
 
-def generate_mujoco_xml(net: RailNetwork, resolution: float = 0.2, terrain: TerrainSpec | None = None) -> str:
+def generate_mujoco_xml(
+    net: RailNetwork, resolution: float = 0.2, terrain: TerrainSpec | None = None
+) -> str:
     """Generate MuJoCo MJCF XML with inline rail meshes and optional terrain hfield."""
     spec = net.spec
     root = Element("mujoco", model="rail_network")
@@ -506,7 +545,7 @@ def generate_mujoco_xml(net: RailNetwork, resolution: float = 0.2, terrain: Terr
             "geom",
             name=f"sleeper_{ti}",
             type="box",
-            size=f"{sl/2:.4f} {sw/2:.4f} {sh/2:.4f}",
+            size=f"{sl / 2:.4f} {sw / 2:.4f} {sh / 2:.4f}",
             pos=f"{pos.x:.4f} {pos.y:.4f} {0:.4f}",
             euler=f"0 0 {yaw:.6f}",
             material="mat_sleeper",
@@ -523,20 +562,32 @@ def generate_mujoco_xml(net: RailNetwork, resolution: float = 0.2, terrain: Terr
         rx, ry = (xmax - xmin) / 2, (ymax - ymin) / 2
         cx, cy = (xmin + xmax) / 2, (ymin + ymax) / 2
         SubElement(
-            asset, "material", name="mat_terrain",
-            rgba="0.45 0.38 0.28 1", specular="0.1", shininess="0.1",
+            asset,
+            "material",
+            name="mat_terrain",
+            rgba="0.45 0.38 0.28 1",
+            specular="0.1",
+            shininess="0.1",
         )
         SubElement(
-            asset, "hfield", name="terrain",
-            nrow=str(nrow), ncol=str(ncol),
+            asset,
+            "hfield",
+            name="terrain",
+            nrow=str(nrow),
+            ncol=str(ncol),
             size=f"{rx:.4f} {ry:.4f} {e_range:.4f} 0.5",
             elevation=" ".join(f"{v:.4f}" for v in elevation[::-1].ravel()),
         )
         SubElement(
-            worldbody, "geom", name="terrain",
-            type="hfield", hfield="terrain",
+            worldbody,
+            "geom",
+            name="terrain",
+            type="hfield",
+            hfield="terrain",
             pos=f"{cx:.4f} {cy:.4f} {e_min:.4f}",
-            material="mat_terrain", contype="1", conaffinity="1",
+            material="mat_terrain",
+            contype="1",
+            conaffinity="1",
         )
 
     indent(root, space="  ")
@@ -608,8 +659,12 @@ def log_network(net: RailNetwork, terrain: TerrainSpec | None = None):
         gx, gy = np.meshgrid(xs, ys)
         verts = np.column_stack([gx.ravel(), gy.ravel(), elevation.ravel()])
         i = (np.arange(nrow - 1)[:, None] * ncol + np.arange(ncol - 1)[None, :]).ravel()
-        faces = np.vstack([np.column_stack([i, i + ncol, i + 1]),
-                           np.column_stack([i + 1, i + ncol, i + ncol + 1])])
+        faces = np.vstack(
+            [
+                np.column_stack([i, i + ncol, i + 1]),
+                np.column_stack([i + 1, i + ncol, i + ncol + 1]),
+            ]
+        )
         rr.log(
             "network/terrain",
             rr.Mesh3D(
@@ -631,9 +686,13 @@ class RailwayScene:
     _TERRAIN_DEFAULT = object()  # sentinel: distinguish 'not passed' from None
 
     @classmethod
-    def build(cls, rng: np.random.Generator, n_roads: int = 5,
-              terrain: TerrainSpec | None | object = _TERRAIN_DEFAULT,
-              **builder_kwargs) -> "RailwayScene":
+    def build(
+        cls,
+        rng: np.random.Generator,
+        n_roads: int = 5,
+        terrain: TerrainSpec | None | object = _TERRAIN_DEFAULT,
+        **builder_kwargs,
+    ) -> "RailwayScene":
         if terrain is cls._TERRAIN_DEFAULT:
             terrain = TerrainSpec()
         net = RailNetworkBuilder(**builder_kwargs).build(rng, n_roads=n_roads)
@@ -642,8 +701,9 @@ class RailwayScene:
     def log_rerun(self):
         log_network(self.net, terrain=self.terrain)
 
-    def save_mujoco_scene(self, project_root: str,
-                          start_pos: tuple[float, float, float] | None = None) -> str:
+    def save_mujoco_scene(
+        self, project_root: str, start_pos: tuple[float, float, float] | None = None
+    ) -> str:
         """Write a complete MuJoCo scene XML to a temp file and return its path.
 
         The file includes the Go2 robot, lighting, and all rail/terrain
@@ -657,9 +717,7 @@ class RailwayScene:
         from xml.etree.ElementTree import parse as ET_parse
         from io import StringIO
 
-        go2_xml = os.path.join(
-            project_root, "resources", "go2.xml"
-        )
+        go2_xml = os.path.join(project_root, "resources", "go2.xml")
 
         # Build the base scene (mirroring resources/scene_flat.xml)
         root = Element("mujoco", model="go2 rail scene")
@@ -667,48 +725,102 @@ class RailwayScene:
         SubElement(root, "statistic", center="0 0 0.1", extent="0.8")
 
         vis = SubElement(root, "visual")
-        SubElement(vis, "headlight", diffuse="0.6 0.6 0.6",
-                   ambient="0.3 0.3 0.3", specular="0 0 0")
+        SubElement(
+            vis,
+            "headlight",
+            diffuse="0.6 0.6 0.6",
+            ambient="0.3 0.3 0.3",
+            specular="0 0 0",
+        )
         SubElement(vis, "rgba", haze="0.15 0.25 0.35 1")
-        SubElement(vis, "global", azimuth="-130", elevation="-20",
-                   offwidth="1280", offheight="720")
+        SubElement(
+            vis,
+            "global",
+            azimuth="-130",
+            elevation="-20",
+            offwidth="1280",
+            offheight="720",
+        )
         SubElement(vis, "map", zfar="200")
 
         asset = SubElement(root, "asset")
-        SubElement(asset, "texture", type="skybox", builtin="gradient",
-                   rgb1="0.3 0.5 0.7", rgb2="0 0 0", width="512", height="3072")
-        SubElement(asset, "texture", type="2d", name="groundplane",
-                   builtin="checker", mark="edge",
-                   rgb1="0.2 0.3 0.4", rgb2="0.1 0.2 0.3",
-                   markrgb="0.8 0.8 0.8", width="300", height="300")
-        SubElement(asset, "material", name="groundplane", texture="groundplane",
-                   texuniform="true", texrepeat="5 5", reflectance="0.2")
+        SubElement(
+            asset,
+            "texture",
+            type="skybox",
+            builtin="gradient",
+            rgb1="0.3 0.5 0.7",
+            rgb2="0 0 0",
+            width="512",
+            height="3072",
+        )
+        SubElement(
+            asset,
+            "texture",
+            type="2d",
+            name="groundplane",
+            builtin="checker",
+            mark="edge",
+            rgb1="0.2 0.3 0.4",
+            rgb2="0.1 0.2 0.3",
+            markrgb="0.8 0.8 0.8",
+            width="300",
+            height="300",
+        )
+        SubElement(
+            asset,
+            "material",
+            name="groundplane",
+            texture="groundplane",
+            texuniform="true",
+            texrepeat="5 5",
+            reflectance="0.2",
+        )
 
         worldbody = SubElement(root, "worldbody")
-        SubElement(worldbody, "light", pos="0 0 1.5", dir="0 0 -1",
-                   directional="true")
-        SubElement(worldbody, "camera", name="spectator",
-                   pos="0 -3 1.5", xyaxes="1 0 0 0 0.447 0.894")
+        SubElement(worldbody, "light", pos="0 0 1.5", dir="0 0 -1", directional="true")
+        SubElement(
+            worldbody,
+            "camera",
+            name="spectator",
+            pos="0 -3 1.5",
+            xyaxes="1 0 0 0 0.447 0.894",
+        )
 
         # Override the robot start position if requested
         if start_pos is not None:
             sx, sy, syaw = start_pos
             cw, sw_ = math.cos(syaw / 2), math.sin(syaw / 2)
-            qpos = (f"{sx} {sy} 0.27 {cw} 0 0 {sw_} "
-                    "0 0.9 -1.8 0 0.9 -1.8 0 0.9 -1.8 0 0.9 -1.8")
+            qpos = (
+                f"{sx} {sy} 0.27 {cw} 0 0 {sw_} "
+                "0 0.9 -1.8 0 0.9 -1.8 0 0.9 -1.8 0 0.9 -1.8"
+            )
             ctrl = "0 0.9 -1.8 0 0.9 -1.8 0 0.9 -1.8 0 0.9 -1.8"
             kf = SubElement(root, "keyframe")
             SubElement(kf, "key", name="rail_start", qpos=qpos, ctrl=ctrl)
 
         # Human-marker mocap body (visible + collidable for lidar)
         marker = SubElement(worldbody, "body", name="uwb_tag", mocap="true")
-        SubElement(marker, "geom", type="cylinder", size="0.2 0.9",
-                   rgba="1.0 0.5 0.0 0.5", contype="0", conaffinity="0")
+        SubElement(
+            marker,
+            "geom",
+            type="cylinder",
+            size="0.2 0.9",
+            rgba="1.0 0.5 0.0 0.5",
+            contype="0",
+            conaffinity="0",
+        )
 
         # Add a flat floor if no terrain heightfield
         if self.terrain is None:
-            SubElement(worldbody, "geom", name="floor", type="plane",
-                       size="0 0 0.05", material="groundplane")
+            SubElement(
+                worldbody,
+                "geom",
+                name="floor",
+                type="plane",
+                size="0 0 0.05",
+                material="groundplane",
+            )
 
         # Merge rail/sleeper/terrain from generate_mujoco_xml()
         rail_xml = generate_mujoco_xml(self.net, terrain=self.terrain)
