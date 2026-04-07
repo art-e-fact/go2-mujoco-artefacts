@@ -658,7 +658,7 @@ class RailwayScene:
         from io import StringIO
 
         go2_xml = os.path.join(
-            project_root, "src", "unitree_mujoco", "unitree_robots", "go2", "go2.xml"
+            project_root, "resources", "go2.xml"
         )
 
         # Build the base scene (mirroring resources/scene_flat.xml)
