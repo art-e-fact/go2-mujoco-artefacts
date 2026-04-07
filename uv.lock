@@ -1114,7 +1114,7 @@ requires-dist = [
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "rerun-sdk", specifier = ">=0.31.1" },
     { name = "torch", specifier = ">=2.11.0" },
-    { name = "unitree-mujoco", editable = "src/unitree_mujoco" },
+    { name = "unitree-mujoco", git = "https://github.com/art-e-fact/unitree_mujoco.git?rev=0bd9111e4f3e1ee83e779f7c6de5c6b609414d2b" },
     { name = "unitree-sdk2py", git = "https://github.com/carlosdp/unitree_sdk2_python.git?branch=proper-python-modules" },
 ]
 
@@ -2743,21 +2743,10 @@ wheels = [
 [[package]]
 name = "unitree-mujoco"
 version = "0.1.0"
-source = { editable = "src/unitree_mujoco" }
+source = { git = "https://github.com/art-e-fact/unitree_mujoco.git?rev=0bd9111e4f3e1ee83e779f7c6de5c6b609414d2b#0bd9111e4f3e1ee83e779f7c6de5c6b609414d2b" }
 dependencies = [
     { name = "huggingface-hub" },
     { name = "mujoco" },
-    { name = "numpy" },
-    { name = "opencv-python" },
-    { name = "pyyaml" },
-    { name = "torch" },
-    { name = "unitree-sdk2py" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "huggingface-hub", specifier = ">=0.32.0" },
-    { name = "mujoco", specifier = ">=3.6.0" },
     { name = "numpy" },
     { name = "opencv-python" },
     { name = "pyyaml" },

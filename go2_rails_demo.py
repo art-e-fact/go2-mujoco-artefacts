@@ -209,8 +209,8 @@ def main():
     parser.add_argument("--rerun",         action="store_true",       help="Stream data to Rerun viewer")
     parser.add_argument("--heightmap-nav", action="store_true",
                         help="Steer using heightmap rail detection instead of path geometry")
-    parser.add_argument("--policy", choices=["wtw", "rsl_rl"], default="wtw",
-                        help="Locomotion policy (default: wtw)")
+    parser.add_argument("--policy", choices=["wtw", "rsl_rl"], default="rsl_rl",
+                        help="Locomotion policy (default: rsl_rl)")
     args = parser.parse_args()
 
     if args.heightmap_nav:

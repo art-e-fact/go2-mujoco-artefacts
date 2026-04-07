@@ -13,11 +13,30 @@ A flat scene is added to the `unitree_mujoco` package (see copy stage) to provid
 This project uses `uv` for Python environment management. For installation instructions, see https://docs.astral.sh/uv/getting-started/installation/
 
 
-## Run
+## Initialize the virtual environment
 ```bash
-uv run go2_rails_demo.py  --rerun --seed 123 --policy rsl_rl --heightmap-nav
+uv sync
+source .venv/bin/activate
+```
+
+## Run
+
+#### Run follow-on-rails demo with procedurally generated railroad:
+```bash
+python go2_rails_demo.py  --rerun --heightmap-nav --seed 123
 ```
 The robot should walk on the rails following the target object.
+
+_Note: run `python go2_rails_demo.py --help` for more options._
+
+#### Run the robot with WTW policy in a test environment:
+```bash
+python go2_wtw_demo.py
+```
+
+_Note: run `python go2_wtw_demo.py --help` for more options._
+
+
 
 ### Run test with artefacts
 
