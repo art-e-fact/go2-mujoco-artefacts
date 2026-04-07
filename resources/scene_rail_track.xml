@@ -1,5 +1,5 @@
 <mujoco model="go2 room scene">
-  <include file="../src/unitree_mujoco/unitree_robots/go2/go2.xml"/>
+  <include file="./go2.xml"/>
 
   <statistic center="0 0 0.5" extent="3"/>
 
