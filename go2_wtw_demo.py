@@ -16,12 +16,7 @@ import os
 import time
 import threading
 import subprocess
-from utils import get_python_executable, sim_sleep, last_sim_time, FrontCameraRecorder
-
-_HERE    = os.path.dirname(os.path.abspath(__file__))
-_SDK_DIR = os.path.join(_HERE, "src", "unitree_sdk2_python")
-
-sys.path.insert(0, _SDK_DIR)
+from utils import sim_sleep, FrontCameraRecorder
 
 
 def _drain(proc, events):
@@ -74,7 +69,7 @@ def main():
     parser.add_argument("--rotation-speed", type=float, default=2.5,  help="Rotation speed (rad/s)")
     args = parser.parse_args()
 
-    env = {**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONPATH": _SDK_DIR}
+    env = {**os.environ, "PYTHONUNBUFFERED": "1"}
     procs = []
     recorder = None
 
