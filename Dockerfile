@@ -15,6 +15,7 @@ WORKDIR /ws
 COPY pyproject.toml uv.lock .python-version ./
 # Use cpu-torch (for smaller image size)
 RUN uv lock --index pytorch=https://download.pytorch.org/whl/cpu
+# TODO: Should we move optional dependencies (like rerun-sdk) to extras to decrease the image size? 
 RUN uv sync
 
 COPY artefacts.yaml go2_wtw_demo.py utils.py ./
