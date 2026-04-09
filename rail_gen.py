@@ -111,7 +111,7 @@ class RailNetwork:
         spec: RailSpec = JIS_60KG,
         roads: list | None = None,
         sleeper_spacing: float = 0.6,
-        sleeper_size: tuple[float, float, float] = (0.2, 1.4, 0.1),
+        sleeper_size: tuple[float, float, float] = (0.2, 1.4, 0.05),
     ):
         self.spec = spec
         self.roads: list[list[tuple[float, float, float]]] = roads or []
@@ -609,6 +609,7 @@ def log_network(net: RailNetwork, terrain: TerrainSpec | None = None):
             rr.log(
                 f"network/{si}/center",
                 rr.LineStrips3D([pts], colors=[80, 80, 80], radii=0.01),
+                static=True,
             )
 
         for tag, off in [("L", half_g), ("R", -half_g)]:
@@ -624,6 +625,7 @@ def log_network(net: RailNetwork, terrain: TerrainSpec | None = None):
                     vertex_normals=mesh.normals,
                     vertex_colors=[140, 140, 155],
                 ),
+                static=True,
             )
 
     # Sleepers (deduplicated across all roads) — sunk halfway into ground
@@ -648,6 +650,7 @@ def log_network(net: RailNetwork, terrain: TerrainSpec | None = None):
                 quaternions=rotations,
                 fill_mode="solid",
             ),
+            static=True,
         )
 
     # Terrain mesh
@@ -673,6 +676,7 @@ def log_network(net: RailNetwork, terrain: TerrainSpec | None = None):
                 vertex_normals=_compute_vertex_normals(verts, faces),
                 vertex_colors=[120, 100, 80],
             ),
+            static=True,
         )
 
 
