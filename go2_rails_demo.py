@@ -241,7 +241,7 @@ def main():
     try:
         # --- sport_mujoco.py ---
         _sport_mujoco = os.path.join(os.path.dirname(sys.executable), "sport-mujoco")
-        sim_cmd = [_sport_mujoco,
+        sim_cmd = [get_python_executable(), _sport_mujoco,
                    "--interface", args.interface, "--domain", str(args.domain),
                    "--scene", scene_path, "--keyframe", "rail_start",
                    "--policy", args.policy]

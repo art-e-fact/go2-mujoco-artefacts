@@ -16,7 +16,7 @@ import os
 import time
 import threading
 import subprocess
-from utils import sim_sleep, FrontCameraRecorder
+from utils import get_python_executable, sim_sleep, FrontCameraRecorder
 
 
 def _drain(proc, events):
@@ -76,7 +76,7 @@ def main():
     try:
         # --- sport_mujoco.py: unified sim + WTW + RPC server in one process ---
         _sport_mujoco = os.path.join(os.path.dirname(sys.executable), "sport-mujoco")
-        sim_cmd = [_sport_mujoco,
+        sim_cmd = [get_python_executable(), _sport_mujoco,
                    "--interface", args.interface, "--domain", str(args.domain)]
         if args.headless:
             sim_cmd.append("--headless")
